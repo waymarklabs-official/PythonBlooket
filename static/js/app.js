@@ -5,7 +5,10 @@
 
 import { fetchTopics, QuestionFeed } from "./api.js";
 import { isAbortError, startGame } from "./engine.js";
+import { prettyCode, savedHost, savedPlayer } from "./hostapi.js";
+import { renderHost } from "./host.js";
 import modes from "./modes/index.js";
+import { renderJoin } from "./play.js";
 import {
   AVATARS,
   animateNumber,
@@ -210,6 +213,34 @@ function segmented({ label, choices, value, onChange, className = "" }) {
 }
 
 // ---------------------------------------------------------------------------
+// Hosted games (screens live in host.js / play.js)
+// ---------------------------------------------------------------------------
+
+/** What host.js / play.js need from the shell. */
+const hostEnv = {
+  show,
+  goHome: () => renderHome(),
+  loadCatalog,
+  settings: state.settings,
+  rememberPlayer({ playerName, avatar }) {
+    if (typeof playerName === "string") state.settings.playerName = playerName.trim().slice(0, NAME_MAX);
+    if (AVATARS.includes(avatar)) state.settings.avatar = avatar;
+    saveSettings();
+  },
+  backButton,
+  logo,
+  segmented,
+};
+
+function openHost(opts) {
+  renderHost(hostEnv, opts);
+}
+
+function openJoin(code) {
+  renderJoin(hostEnv, { code });
+}
+
+// ---------------------------------------------------------------------------
 // HOME
 // ---------------------------------------------------------------------------
 
@@ -269,7 +300,29 @@ function renderHome() {
       el("p", { class: "tagline", text: "Answer Python questions, rack up points, and win the game!" }),
       statsLine
     ),
-    el("h2", { class: "section-title", text: "Choose a game mode" }),
+    el(
+      "section",
+      { class: "home-classroom", "aria-label": "Classroom games" },
+      el(
+        "button",
+        { class: "btn btn-purple btn-xl classroom-btn", type: "button", onClick: () => { sfx("click"); openHost(); } },
+        el("span", { "aria-hidden": "true", text: "🎮 " }),
+        "Host a game"
+      ),
+      el(
+        "button",
+        { class: "btn btn-green btn-xl classroom-btn", type: "button", onClick: () => { sfx("click"); openJoin(); } },
+        el("span", { "aria-hidden": "true", text: "🙋 " }),
+        "Join a game"
+      ),
+      savedHost.get()
+        ? el("button", { class: "btn btn-sm btn-white", type: "button", onClick: () => openHost({ resume: true }) }, `Resume hosting ${prettyCode(savedHost.get().code)}`)
+        : null,
+      savedPlayer.get()
+        ? el("button", { class: "btn btn-sm btn-white", type: "button", onClick: () => openJoin(savedPlayer.get().code) }, `Rejoin game ${prettyCode(savedPlayer.get().code)}`)
+        : null
+    ),
+    el("h2", { class: "section-title", text: "Practice solo" }),
     el("div", { class: "mode-grid" }, cards),
     el(
       "footer",
@@ -963,7 +1016,22 @@ function renderHighScores(selectedId) {
 // ---------------------------------------------------------------------------
 
 loadCatalog().catch((err) => toast(`Couldn't load topics: ${err.message}`, "error", 5000));
-renderHome();
+
+/** A shared link looks like  /?join=483920  -> open the Join screen with the code filled in. */
+function joinCodeFromUrl() {
+  const fromQuery = new URLSearchParams(window.location.search).get("join");
+  const fromHash = /(?:^#|&)join=(\d{1,6})/.exec(window.location.hash || "");
+  const code = String(fromQuery || (fromHash && fromHash[1]) || "").replace(/\D/g, "").slice(0, 6);
+  return code || null;
+}
+
+const startCode = joinCodeFromUrl();
+if (startCode) {
+  window.history.replaceState(null, "", window.location.pathname);
+  openJoin(startCode);
+} else {
+  renderHome();
+}
 
 // Exposed for debugging / tests.
-window.PyBlooket = { state, modes, renderHome, renderSetup: (id) => renderSetup(modeById(id)), renderHighScores, formatTime };
+window.PyBlooket = { state, modes, renderHome, renderSetup: (id) => renderSetup(modeById(id)), renderHighScores, formatTime, openHost, openJoin };
