@@ -70,7 +70,8 @@ def test_topic_filter(client):
 @pytest.mark.parametrize(
     "types,allowed",
     [
-        ("choice", {"choice"}),
+        ("choice", {"choice", "match"}),
+        ("choice,blanks", {"choice", "blanks"}),
         ("typing", {"blanks", "code"}),
         ("choice,match", {"choice", "match"}),
         ("code", {"code"}),
