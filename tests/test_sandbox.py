@@ -198,6 +198,8 @@ def test_requires_and_forbids():
         "def average(a,b,c):\n    return __builtins__",
         "def average(a,b,c):\n    return f'{print.__globals__}'",
         "def average(a,b,c):\n    return int.mro()",
+        "def average(a,b,c):\n    match print:\n        case object(__globals__=g):\n            return g",
+        "def average(a,b,c):\n    global __builtins__\n    return 1",
     ],
 )
 def test_rejects_dangerous_code(code):
@@ -277,7 +279,7 @@ def test_class_definitions_work():
 def test_type_builtin_with_one_argument():
     t = expression_task("type(x) == int", [({"x": 3}, True), ({"x": "3"}, False), ({"x": 2.5}, False)])
     assert grade(t, t.solution)["correct"]
-    t2 = expression_task("type(x)", [({"x": 3}, int)] if False else [({"x": 3}, True)] * 3)
+    t2 = expression_task("type(x) == int", [({"x": 3}, True)] * 3)
     assert not grade(t2, "type('X', (), {})")["correct"]
 
 

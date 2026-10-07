@@ -107,6 +107,17 @@ class Validator(ast.NodeVisitor):
     visit_Yield = visit_YieldFrom = visit_Await = visit_AsyncFunctionDef = _no
     visit_AsyncFor = visit_AsyncWith = visit_GeneratorExp = _no
 
+    def visit_Match(self, node):
+        # `case object(__globals__=g)` reads attributes by *string*, which the Attribute check can't see.
+        self.fail(node, "`match` isn't available in this challenge")
+
+    def visit_Global(self, node):
+        for n in node.names:
+            if n.startswith("__"):
+                self.fail(node, f"`{n}` isn't available in this challenge")
+
+    visit_Nonlocal = visit_Global
+
 
 def validate(tree):
     Validator().visit(tree)
