@@ -1,11 +1,16 @@
 /**
  * PyBlooket app shell: HOME -> SETUP -> GAME -> RESULTS, plus HIGH SCORES.
  * Game modes live in ./modes/ (see engine.js for the mode contract).
+ *
+ * HOME has two big classroom buttons (Host a game -> host.js, Join a game -> play.js; a shared link
+ * /?join=483920 opens Join with the code filled in) above the solo mode grid. Solo SETUP picks the
+ * lesson topics (Unit 2 lessons first, extras tucked away), the question types (Mixed / Multiple
+ * choice / Typing) and the difficulty; renderGame() hands the choices to the engine and the QuestionFeed.
  */
 
 import { fetchTopics, QuestionFeed } from "./api.js";
 import { isAbortError, startGame } from "./engine.js";
-import { prettyCode, savedHost, savedPlayer } from "./hostapi.js";
+import { playLookup, prettyCode, savedHost, savedPlayer } from "./hostapi.js";
 import { renderHost } from "./host.js";
 import modes from "./modes/index.js";
 import { renderJoin } from "./play.js";
@@ -39,6 +44,38 @@ const MODE_COLORS = {
 };
 const FALLBACK_COLORS = ["#ff8a1f", "#19c3c3", "#ff5cb8", "#2f8cff", "#ffb703"];
 
+/** Bump when the saved topic ids change meaning: older saved selections are then reset to the lessons. */
+const TOPICS_VERSION = 2;
+
+/** The "Question types" presets (ids match catalog.type_presets); wording adapts to catalog.code_enabled. */
+const TYPE_CHOICES = [
+  {
+    id: "mixed",
+    icon: "🎲",
+    label: "Mixed",
+    sub: (code) => (code ? "choice + typing" : "choice + blanks"),
+    blurb: (code) => (code ? "Multiple choice plus fill-in-the-blanks and coding." : "Multiple choice plus fill-in-the-blanks."),
+  },
+  {
+    id: "choice",
+    icon: "👆",
+    label: "Multiple choice",
+    sub: () => "tap an answer",
+    blurb: () => "Pick the right answer or match things up. No typing.",
+  },
+  {
+    id: "typing",
+    icon: "⌨️",
+    label: "Typing",
+    sub: (code) => (code ? "blanks + code" : "fill the blanks"),
+    blurb: (code) => (code ? "Fill in the blanks and write real code." : "Fill in the blanks."),
+  },
+];
+const TYPE_IDS = TYPE_CHOICES.map((c) => c.id);
+/** What each preset means if the server did not say (older servers). */
+const DEFAULT_PRESETS = { mixed: ["choice", "blanks", "match", "code"], choice: ["choice", "match"], typing: ["blanks", "code"] };
+const QTYPE_LABELS = { choice: "Multiple choice", blanks: "Fill in the blanks", match: "Matching", code: "Write the code" };
+
 const DIFFICULTY_CHOICES = [
   { id: 1, label: "Easy", stars: "★", points: "100 pts" },
   { id: 2, label: "Medium", stars: "★★", points: "250 pts" },
@@ -49,7 +86,7 @@ const DIFFICULTY_CHOICES = [
 const app = document.getElementById("app");
 
 const state = {
-  catalog: null, // {topics, difficulties}
+  catalog: null, // {topics, difficulties, qtypes, type_presets, code_enabled} (see normalizeCatalog)
   catalogPromise: null,
   catalogError: null,
   settings: loadSettings(),
@@ -71,14 +108,16 @@ function loadSettings() {
   return {
     playerName: typeof s.playerName === "string" ? s.playerName.slice(0, NAME_MAX) : "",
     avatar: AVATARS.includes(s.avatar) ? s.avatar : AVATARS[Math.floor(Math.random() * AVATARS.length)],
-    topics: Array.isArray(s.topics) ? s.topics.filter((t) => typeof t === "string") : null, // null = all
+    // null = every lesson topic. Selections saved before the lesson groups existed are dropped once.
+    topics: s.topicsV === TOPICS_VERSION && Array.isArray(s.topics) ? s.topics.filter((t) => typeof t === "string") : null,
+    types: TYPE_IDS.includes(s.types) ? s.types : "mixed",
     difficulty: [1, 2, 3, "mixed"].includes(s.difficulty) ? s.difficulty : "mixed",
     options: s.options && typeof s.options === "object" ? s.options : {},
   };
 }
 
 function saveSettings() {
-  storageSet(SETTINGS_KEY, state.settings);
+  storageSet(SETTINGS_KEY, { ...state.settings, topicsV: TOPICS_VERSION });
 }
 
 function loadHighScores() {
@@ -104,17 +143,53 @@ function recordHighScore(modeId, entry) {
 }
 
 // ---------------------------------------------------------------------------
-// Catalogue (topics + difficulties from the server)
+// Catalogue (topics, difficulties and question types from the server)
 // ---------------------------------------------------------------------------
+
+/** GET /api/topics, including the fields fetchTopics() may not hand on (type_presets, code_enabled). */
+async function fetchCatalog() {
+  const data = await fetchTopics();
+  if (data.type_presets && typeof data.code_enabled === "boolean") return data;
+  try {
+    const res = await fetch("/api/topics", { headers: { Accept: "application/json" } });
+    if (res.ok) return { ...data, ...(await res.json()) };
+  } catch {
+    /* fall back to the defaults below */
+  }
+  return data;
+}
+
+/**
+ * The catalogue the screens (and host.js / play.js) can rely on:
+ *   topics [{id, name, icon, description, group: "course"|"extra", lesson: "CSF.2.D"|"", types: {qtype: count}}]
+ *   difficulties [{id, label, points}]    qtypes [{id, label, time_factor}]
+ *   type_presets {mixed|choice|typing: [qtype, ...]}    code_enabled (false = the server has typed code switched off)
+ */
+function normalizeCatalog(data) {
+  const codeEnabled = data.code_enabled !== false;
+  const type_presets = {};
+  for (const key of TYPE_IDS) {
+    const raw = data.type_presets && Array.isArray(data.type_presets[key]) ? data.type_presets[key] : DEFAULT_PRESETS[key];
+    type_presets[key] = raw.filter((t) => typeof t === "string" && (codeEnabled || t !== "code"));
+  }
+  return {
+    ...data,
+    topics: (data.topics || []).map((t) => ({ ...t, group: t.group === "extra" ? "extra" : "course", lesson: typeof t.lesson === "string" ? t.lesson : "" })),
+    difficulties: data.difficulties || [],
+    qtypes: Array.isArray(data.qtypes) ? data.qtypes : [],
+    type_presets,
+    code_enabled: codeEnabled,
+  };
+}
 
 function loadCatalog() {
   if (state.catalog) return Promise.resolve(state.catalog);
   if (!state.catalogPromise) {
     state.catalogError = null;
-    state.catalogPromise = fetchTopics()
+    state.catalogPromise = fetchCatalog()
       .then((data) => {
-        state.catalog = data;
-        return data;
+        state.catalog = normalizeCatalog(data);
+        return state.catalog;
       })
       .catch((err) => {
         state.catalogError = err;
@@ -129,12 +204,63 @@ function topicIds() {
   return (state.catalog?.topics || []).map((t) => t.id);
 }
 
-/** The saved topic selection, restricted to topics the server actually has. */
+/** Lesson topics (sorted by lesson tag) and the extras. A catalogue with only extras counts them as the lessons. */
+function topicGroups() {
+  const topics = state.catalog?.topics || [];
+  let lessons = topics.filter((t) => t.group !== "extra").sort((a, b) => a.lesson.localeCompare(b.lesson, undefined, { numeric: true }));
+  let extras = topics.filter((t) => t.group === "extra");
+  if (!lessons.length) [lessons, extras] = [extras, []];
+  return { lessons, extras };
+}
+
+/** The saved topic selection, restricted to topics the server actually has (none left = every lesson topic). */
 function selectedTopics() {
   const ids = topicIds();
-  if (!state.settings.topics) return ids;
-  const picked = state.settings.topics.filter((t) => ids.includes(t));
-  return picked.length ? picked : ids;
+  const picked = (state.settings.topics || []).filter((t) => ids.includes(t));
+  return picked.length ? picked : topicGroups().lessons.map((t) => t.id);
+}
+
+// ---- question types -------------------------------------------------------
+
+function typeChoice(id) {
+  return TYPE_CHOICES.find((c) => c.id === id) || TYPE_CHOICES[0];
+}
+
+/** The question formats a preset ("mixed" | "choice" | "typing") stands for. */
+function presetTypes(key) {
+  return state.catalog?.type_presets?.[key] || DEFAULT_PRESETS[key] || DEFAULT_PRESETS.mixed;
+}
+
+function qtypeLabel(id) {
+  return state.catalog?.qtypes?.find((q) => q.id === id)?.label || QTYPE_LABELS[id] || id;
+}
+
+/** The formats of a preset that the mode can show (a mode may declare questionTypes, see engine.js). */
+function modeFormats(mode, key) {
+  const preset = presetTypes(key);
+  const allowed = Array.isArray(mode.questionTypes) && mode.questionTypes.length ? mode.questionTypes : null;
+  return allowed ? preset.filter((t) => allowed.includes(t)) : preset;
+}
+
+/** `settings.types` for the engine / QuestionFeed: the preset id, or an explicit list when the mode allows fewer formats. */
+function resolveTypes(mode, key) {
+  const formats = modeFormats(mode, key);
+  if (formats.length === presetTypes(key).length) return key;
+  return formats.length ? formats : [...mode.questionTypes];
+}
+
+/** One line on the setup screen when the mode leaves some of the chosen formats out. */
+function modeTypesNote(mode, key) {
+  const left = presetTypes(key).filter((t) => !modeFormats(mode, key).includes(t));
+  if (!left.length) return "";
+  return `${mode.name} skips ${left.map((t) => `“${qtypeLabel(t)}”`).join(" and ")} questions: they are too slow for this mode.`;
+}
+
+/** True when none of `topicIdList` has a question in any of `formats` (only checks what the server reported). */
+function lacksFormats(topicIdList, formats) {
+  const topics = (state.catalog?.topics || []).filter((t) => topicIdList.includes(t.id));
+  if (!topics.length || topics.some((t) => !t.types)) return false;
+  return !topics.some((t) => formats.some((f) => (t.types[f] || 0) > 0));
 }
 
 function modeColor(mode, i = 0) {
@@ -197,6 +323,8 @@ function segmented({ label, choices, value, onChange, className = "" }) {
       {
         class: ["seg", c.className],
         type: "button",
+        disabled: c.disabled,
+        title: c.title,
         "aria-pressed": String(c.value === value),
         onClick: () => {
           for (const b of buttons) b.setAttribute("aria-pressed", String(b === btn));
@@ -221,7 +349,10 @@ const hostEnv = {
   show,
   goHome: () => renderHome(),
   loadCatalog,
-  settings: state.settings,
+  /** The live settings object (always current: setup screens replace it when they save). */
+  get settings() {
+    return state.settings;
+  },
   rememberPlayer({ playerName, avatar }) {
     if (typeof playerName === "string") state.settings.playerName = playerName.trim().slice(0, NAME_MAX);
     if (AVATARS.includes(avatar)) state.settings.avatar = avatar;
@@ -244,12 +375,45 @@ function openJoin(code) {
 // HOME
 // ---------------------------------------------------------------------------
 
+/**
+ * A "Resume ..." button for a game remembered in this browser. The game may be long gone
+ * (server restarted, host ended it): ask the server once and drop the button if so.
+ */
+function resumeButton(label, saved, onClick, forget) {
+  const btn = el(
+    "button",
+    { class: "btn btn-sm btn-white classroom-resume", type: "button", onClick },
+    el("span", { "aria-hidden": "true", text: "↩ " }),
+    label,
+    " ",
+    el("b", { class: "classroom-resume-code", text: prettyCode(saved.code) })
+  );
+  playLookup(saved.code).catch((err) => {
+    if (err && (err.reason === "not_found" || err.status === 404)) {
+      forget();
+      btn.remove();
+    }
+  });
+  return btn;
+}
+
+function classroomButton({ color, icon, title, sub, onClick }) {
+  return el(
+    "button",
+    { class: ["btn", "btn-xl", "classroom-btn", color], type: "button", onClick },
+    el("span", { class: "classroom-icon", "aria-hidden": "true", text: icon }),
+    el("span", { class: "classroom-text" }, el("span", { class: "classroom-title", text: title }), el("span", { class: "classroom-sub", text: sub }))
+  );
+}
+
 function renderHome() {
   const statsLine = el("p", { class: "home-meta" });
   const updateMeta = () => {
-    const n = state.catalog?.topics.length;
+    const lessons = state.catalog ? topicGroups().lessons.length : 0;
+    const code = state.catalog ? state.catalog.code_enabled : true;
     statsLine.replaceChildren(
-      el("span", { class: "meta-pill" }, "🐍 ", n ? `${n} Python topics` : "Python topics"),
+      el("span", { class: "meta-pill" }, "📚 ", lessons ? `${lessons} Unit 2 lesson topics` : "Unit 2 lessons"),
+      el("span", { class: "meta-pill" }, code ? "⌨️ Type real code" : "⌨️ Fill in the blanks"),
       el("span", { class: "meta-pill diff-1" }, "★ Easy 100"),
       el("span", { class: "meta-pill diff-2" }, "★★ Medium 250"),
       el("span", { class: "meta-pill diff-3" }, "★★★ Hard 500")
@@ -278,6 +442,43 @@ function renderHome() {
     )
   );
 
+  const hosted = savedHost.get();
+  const joined = savedPlayer.get();
+  const classroom = el(
+    "section",
+    { class: "home-classroom", "aria-label": "Classroom games" },
+    el(
+      "div",
+      { class: "classroom-cell pop-in" },
+      classroomButton({
+        color: "btn-yellow",
+        icon: "🎮",
+        title: "Host a game",
+        sub: "Teachers: show a code on the projector",
+        onClick: () => {
+          sfx("click");
+          openHost();
+        },
+      }),
+      hosted ? resumeButton("Resume hosting", hosted, () => openHost({ resume: true }), () => savedHost.clear()) : null
+    ),
+    el(
+      "div",
+      { class: "classroom-cell pop-in", style: { "--delay": "70ms" } },
+      classroomButton({
+        color: "btn-green",
+        icon: "🙋",
+        title: "Join a game",
+        sub: "Students: enter the code on your device",
+        onClick: () => {
+          sfx("click");
+          openJoin();
+        },
+      }),
+      joined ? resumeButton("Resume your game", joined, () => openJoin(joined.code), () => savedPlayer.clear()) : null
+    )
+  );
+
   const screen = el(
     "div",
     { class: "screen home-screen" },
@@ -297,38 +498,35 @@ function renderHome() {
       { class: "hero" },
       el("div", { class: "hero-blooks", "aria-hidden": "true" }, ["🐍", "🦊", "🐸", "🐙", "🦄"].map((a, i) => blook(a, { size: i === 0 ? 76 : 50, className: `hero-blook hb-${i}` }))),
       logo(),
-      el("p", { class: "tagline", text: "Answer Python questions, rack up points, and win the game!" }),
+      el("p", { class: "tagline", text: "Play live with your class or practice solo: pick answers, fill in the blanks and type real Python code!" }),
       statsLine
     ),
-    el(
-      "section",
-      { class: "home-classroom", "aria-label": "Classroom games" },
-      el(
-        "button",
-        { class: "btn btn-purple btn-xl classroom-btn", type: "button", onClick: () => { sfx("click"); openHost(); } },
-        el("span", { "aria-hidden": "true", text: "🎮 " }),
-        "Host a game"
-      ),
-      el(
-        "button",
-        { class: "btn btn-green btn-xl classroom-btn", type: "button", onClick: () => { sfx("click"); openJoin(); } },
-        el("span", { "aria-hidden": "true", text: "🙋 " }),
-        "Join a game"
-      ),
-      savedHost.get()
-        ? el("button", { class: "btn btn-sm btn-white", type: "button", onClick: () => openHost({ resume: true }) }, `Resume hosting ${prettyCode(savedHost.get().code)}`)
-        : null,
-      savedPlayer.get()
-        ? el("button", { class: "btn btn-sm btn-white", type: "button", onClick: () => openJoin(savedPlayer.get().code) }, `Rejoin game ${prettyCode(savedPlayer.get().code)}`)
-        : null
-    ),
+    classroom,
     el("h2", { class: "section-title", text: "Practice solo" }),
     el("div", { class: "mode-grid" }, cards),
     el(
       "footer",
       { class: "home-footer only-mouse" },
-      el("span", null, "Tip: press ", el("kbd", { text: "1" }), "–", el("kbd", { text: "4" }), " to answer and ", el("kbd", { text: "Enter" }), " to continue.")
-    )
+      el("p", null, "Tip: press ", el("kbd", { text: "1" }), "–", el("kbd", { text: "4" }), " to answer and ", el("kbd", { text: "Enter" }), " to continue."),
+      el(
+        "p",
+        null,
+        "Typing questions: ",
+        el("kbd", { text: "Enter" }),
+        " jumps to the next blank. In the code editor ",
+        el("kbd", { text: "Ctrl" }),
+        "+",
+        el("kbd", { text: "Enter" }),
+        " submits and ",
+        el("kbd", { text: "Ctrl" }),
+        "+",
+        el("kbd", { text: "Shift" }),
+        "+",
+        el("kbd", { text: "Enter" }),
+        " runs your code."
+      )
+    ),
+    el("p", { class: "home-footer only-touch", text: "Typing questions have a symbol bar above the keyboard for ( ) [ ] : and more." })
   );
   show(screen, { focus: false });
 }
@@ -343,6 +541,7 @@ function renderSetup(mode) {
     playerName: s.playerName,
     avatar: s.avatar,
     topics: new Set(),
+    types: s.types,
     difficulty: s.difficulty,
     options: optionValues(mode),
   };
@@ -416,10 +615,28 @@ function renderSetup(mode) {
 
   // ---- topics -------------------------------------------------------------
   const topicCount = el("span", { class: "count-pill" });
-  const topicGrid = el("div", { class: "chip-grid", role: "group", "aria-label": "Topics" });
+  const lessonGrid = el("div", { class: "chip-grid", role: "group", "aria-label": "Unit 2 lesson topics" });
+  const extraGrid = el("div", { class: "chip-grid", role: "group", "aria-label": "Extra challenge topics" });
+  const extraCount = el("span", { class: "count-pill" });
+  const extraBox = el(
+    "details",
+    { class: "topic-extras", hidden: true },
+    el("summary", { class: "topic-extras-summary" }, el("span", { class: "topic-extras-label", text: "More challenge (beyond the lessons)" }), extraCount),
+    extraGrid
+  );
+  const lessonHeading = el("h3", { class: "topic-group-title" }, "Unit 2 lessons");
   const topicHint = el("p", { class: "hint hint-error", role: "alert", hidden: true, text: "Pick at least one topic to play." });
-  const allBtn = el("button", { class: "btn btn-sm btn-white", type: "button", text: "All", onClick: () => setAllTopics(true) });
-  const noneBtn = el("button", { class: "btn btn-sm btn-white", type: "button", text: "None", onClick: () => setAllTopics(false) });
+  const allBtn = el("button", { class: "btn btn-sm btn-white", type: "button", text: "All", title: "Select every lesson topic", onClick: () => setLessonTopics() });
+  const noneBtn = el("button", { class: "btn btn-sm btn-white", type: "button", text: "None", title: "Clear the selection", onClick: () => setAllTopics(false) });
+  const extrasBtn = el("button", {
+    class: "btn btn-sm btn-white btn-toggle",
+    type: "button",
+    text: "+ extras",
+    title: "Add or remove all the extra challenge topics",
+    "aria-pressed": "false",
+    hidden: true,
+    onClick: () => toggleExtras(),
+  });
   const topicsCard = el(
     "section",
     { class: "card setup-card topics-card" },
@@ -427,21 +644,35 @@ function renderSetup(mode) {
       "div",
       { class: "card-head" },
       el("h2", { class: "card-title" }, "Topics ", topicCount),
-      el("div", { class: "card-head-actions" }, allBtn, noneBtn)
+      el("div", { class: "card-head-actions" }, allBtn, noneBtn, extrasBtn)
     ),
-    topicGrid,
+    lessonHeading,
+    lessonGrid,
+    extraBox,
     topicHint
   );
   let chipButtons = [];
+  let extraIds = [];
+  let lessonIds = [];
 
   function refreshTopics() {
     const total = state.catalog?.topics.length || 0;
-    topicCount.textContent = `${draft.topics.size}/${total}`;
+    topicCount.textContent = `${draft.topics.size} selected`;
     for (const b of chipButtons) b.setAttribute("aria-pressed", String(draft.topics.has(b.dataset.topic)));
+    const pickedExtras = extraIds.filter((id) => draft.topics.has(id)).length;
+    extraCount.textContent = `${pickedExtras}/${extraIds.length}`;
+    extrasBtn.setAttribute("aria-pressed", String(extraIds.length > 0 && pickedExtras === extraIds.length));
     const ok = draft.topics.size > 0;
     topicHint.hidden = ok || total === 0;
     startBtn.disabled = !ok;
     startBtn.title = ok ? "" : "Pick at least one topic";
+    refreshTypes();
+  }
+
+  function setLessonTopics() {
+    draft.topics = new Set(lessonIds);
+    sfx("click");
+    refreshTopics();
   }
 
   function setAllTopics(on) {
@@ -450,46 +681,72 @@ function renderSetup(mode) {
     refreshTopics();
   }
 
+  function toggleExtras() {
+    const allOn = extraIds.every((id) => draft.topics.has(id));
+    for (const id of extraIds) {
+      if (allOn) draft.topics.delete(id);
+      else draft.topics.add(id);
+    }
+    if (!allOn) extraBox.open = true;
+    sfx("click");
+    refreshTopics();
+  }
+
+  function topicChip(t) {
+    return el(
+      "button",
+      {
+        class: "chip",
+        type: "button",
+        dataset: { topic: t.id },
+        title: t.description,
+        "aria-pressed": "false",
+        onClick: () => {
+          if (draft.topics.has(t.id)) draft.topics.delete(t.id);
+          else draft.topics.add(t.id);
+          sfx("click");
+          refreshTopics();
+        },
+      },
+      el("span", { class: "chip-icon", "aria-hidden": "true", text: t.icon }),
+      el("span", { class: "chip-name", text: t.name }),
+      t.lesson ? el("span", { class: "chip-lesson", text: t.lesson }) : null,
+      el("span", { class: "chip-check", "aria-hidden": "true", text: "✓" })
+    );
+  }
+
   function fillTopics() {
     const topics = state.catalog.topics;
     if (!topics.length) {
-      topicGrid.replaceChildren(el("p", { class: "hint", text: "No question topics are available yet — check back soon!" }));
+      lessonGrid.replaceChildren(el("p", { class: "hint", text: "No question topics are available yet — check back soon!" }));
+      lessonHeading.hidden = true;
       allBtn.disabled = noneBtn.disabled = true;
       refreshTopics();
       return;
     }
+    const groups = topicGroups();
+    lessonIds = groups.lessons.map((t) => t.id);
+    extraIds = groups.extras.map((t) => t.id);
     draft.topics = new Set(selectedTopics());
-    chipButtons = topics.map((t) =>
-      el(
-        "button",
-        {
-          class: "chip",
-          type: "button",
-          dataset: { topic: t.id },
-          title: t.description,
-          "aria-pressed": "false",
-          onClick: () => {
-            if (draft.topics.has(t.id)) draft.topics.delete(t.id);
-            else draft.topics.add(t.id);
-            sfx("click");
-            refreshTopics();
-          },
-        },
-        el("span", { class: "chip-icon", "aria-hidden": "true", text: t.icon }),
-        el("span", { class: "chip-name", text: t.name }),
-        el("span", { class: "chip-check", "aria-hidden": "true", text: "✓" })
-      )
-    );
-    topicGrid.replaceChildren(...chipButtons);
+    const lessonChips = groups.lessons.map(topicChip);
+    const extraChips = groups.extras.map(topicChip);
+    chipButtons = [...lessonChips, ...extraChips];
+    lessonHeading.hidden = false;
+    lessonGrid.replaceChildren(...lessonChips);
+    extraGrid.replaceChildren(...extraChips);
+    extraBox.hidden = extrasBtn.hidden = extraIds.length === 0;
+    extraBox.open = extraIds.some((id) => draft.topics.has(id)); // never hide a chosen topic
+    allBtn.disabled = noneBtn.disabled = false;
     refreshTopics();
   }
 
   function topicsLoading() {
-    topicGrid.replaceChildren(el("div", { class: "loading-inline" }, el("span", { class: "spinner spinner-sm", "aria-hidden": "true" }), "Loading topics…"));
+    lessonGrid.replaceChildren(el("div", { class: "loading-inline" }, el("span", { class: "spinner spinner-sm", "aria-hidden": "true" }), "Loading topics…"));
   }
 
   function topicsFailed(err) {
-    topicGrid.replaceChildren(
+    fillTypes(); // works from the built-in presets
+    lessonGrid.replaceChildren(
       el(
         "div",
         { class: "load-error" },
@@ -500,11 +757,59 @@ function renderSetup(mode) {
           text: "Try again",
           onClick: () => {
             topicsLoading();
-            loadCatalog().then(fillTopics, topicsFailed);
+            loadCatalog().then(fillAll, topicsFailed);
           },
         })
       )
     );
+  }
+
+  // ---- question types -----------------------------------------------------
+  const typesBody = el("div", { class: "types-body" });
+  const typesBlurb = el("p", { class: "hint types-blurb", "aria-live": "polite" });
+  const typesNote = el("p", { class: "hint types-note", hidden: true });
+  const typesWarn = el("p", { class: "hint hint-warn types-warn", role: "status", hidden: true });
+  const typesCard = el("section", { class: "card setup-card types-card" }, el("h2", { class: "card-title", text: "Question types" }), typesBody);
+
+  /** Blurb, mode note and the "no typing questions in these topics" warning follow the choices made so far. */
+  function refreshTypes() {
+    const code = state.catalog ? state.catalog.code_enabled : true;
+    const info = typeChoice(draft.types);
+    typesBlurb.textContent = `${info.blurb(code)}${draft.types === "choice" ? "" : " Typed answers get more time."}`;
+    const note = modeTypesNote(mode, draft.types);
+    typesNote.textContent = note;
+    typesNote.hidden = !note;
+    const typed = modeFormats(mode, draft.types).filter((t) => t === "blanks" || t === "code");
+    const warn = state.catalog && draft.types === "typing" && draft.topics.size > 0 && lacksFormats([...draft.topics], typed);
+    typesWarn.textContent = warn ? "None of the topics you picked have typing questions yet, so you will get multiple choice instead." : "";
+    typesWarn.hidden = !warn;
+  }
+
+  function fillTypes() {
+    const code = state.catalog ? state.catalog.code_enabled : true;
+    const usable = (id) => modeFormats(mode, id).length > 0;
+    if (!usable(draft.types)) draft.types = "mixed";
+    typesBody.replaceChildren(
+      segmented({
+        label: "Question types",
+        className: "seg-types",
+        value: draft.types,
+        choices: TYPE_CHOICES.map((c) => ({
+          value: c.id,
+          disabled: !usable(c.id),
+          title: usable(c.id) ? undefined : `${mode.name} can't use this`,
+          content: [el("span", { class: "seg-icon", "aria-hidden": "true", text: c.icon }), el("span", { class: "seg-label", text: c.label }), el("span", { class: "seg-sub", text: c.sub(code) })],
+        })),
+        onChange: (v) => {
+          draft.types = v;
+          refreshTypes();
+        },
+      }),
+      typesBlurb,
+      typesNote,
+      typesWarn
+    );
+    refreshTypes();
   }
 
   // ---- difficulty ---------------------------------------------------------
@@ -576,6 +881,7 @@ function renderSetup(mode) {
       playerName: draft.playerName.trim().slice(0, NAME_MAX),
       avatar: draft.avatar,
       topics: draft.topics.size ? [...draft.topics] : state.settings.topics,
+      types: draft.types,
       difficulty: draft.difficulty,
       options: { ...state.settings.options, [mode.id]: { ...draft.options } },
     };
@@ -596,6 +902,8 @@ function renderSetup(mode) {
         sfx("levelup");
         renderGame(mode, {
           topics: ordered,
+          types: resolveTypes(mode, draft.types), // preset id, or a list when the mode allows fewer formats
+          typesChoice: draft.types, // what the player picked ("mixed" | "choice" | "typing")
           difficulty: mode.difficultySelectable === false ? "mixed" : draft.difficulty,
           playerName: name,
           avatar: draft.avatar,
@@ -630,17 +938,22 @@ function renderSetup(mode) {
       "div",
       { class: "setup-grid" },
       el("div", { class: "setup-col" }, playerCard, howCard),
-      el("div", { class: "setup-col" }, topicsCard, difficultyCard, optionsCard)
+      el("div", { class: "setup-col" }, topicsCard, typesCard, difficultyCard, optionsCard)
     ),
     el("div", { class: "setup-footer" }, startBtn)
   );
   show(screen);
 
-  if (state.catalog) fillTopics();
+  const fillAll = () => {
+    fillTopics();
+    fillTypes();
+  };
+  if (state.catalog) fillAll();
   else {
     topicsLoading();
+    typesBody.replaceChildren(el("div", { class: "loading-inline" }, el("span", { class: "spinner spinner-sm", "aria-hidden": "true" }), "Loading…"));
     loadCatalog().then(
-      () => screen.isConnected && fillTopics(),
+      () => screen.isConnected && fillAll(),
       (err) => screen.isConnected && topicsFailed(err)
     );
   }
@@ -709,7 +1022,7 @@ function renderGame(mode, gameSettings) {
   );
   show(screen, { focus: false });
 
-  const feed = new QuestionFeed({ topics: gameSettings.topics, difficulty: gameSettings.difficulty });
+  const feed = new QuestionFeed({ topics: gameSettings.topics, difficulty: gameSettings.difficulty, types: gameSettings.types });
   const handle = startGame({
     root,
     mode,
@@ -767,6 +1080,7 @@ function renderResults(mode, gameSettings, { result, stats }) {
     accuracy,
     date: new Date().toISOString(),
     topics: gameSettings.topics,
+    types: gameSettings.typesChoice || "mixed",
     difficulty: gameSettings.difficulty,
   };
   const { rank, isBest } = recordHighScore(mode.id, entry);
@@ -942,6 +1256,7 @@ function renderHighScores(selectedId) {
           const date = new Date(e.date);
           const dateText = Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
           const topicsText = Array.isArray(e.topics) ? `${e.topics.length} topic${e.topics.length === 1 ? "" : "s"}` : "";
+          const typesText = e.types === "choice" || e.types === "typing" ? typeChoice(e.types).label : ""; // "mixed" (and old entries) say nothing
           return el(
             "li",
             { class: ["hs-row", i < 3 && `hs-top hs-top-${i + 1}`] },
@@ -951,7 +1266,7 @@ function renderHighScores(selectedId) {
               "div",
               { class: "hs-who" },
               el("span", { class: "hs-name", text: e.name || "Player" }),
-              el("span", { class: "hs-sub", text: [dateText, difficultyText(e.difficulty), topicsText, `${e.accuracy ?? 0}% acc.`].filter(Boolean).join(" · ") })
+              el("span", { class: "hs-sub", text: [dateText, difficultyText(e.difficulty), typesText, topicsText, `${e.accuracy ?? 0}% acc.`].filter(Boolean).join(" · ") })
             ),
             el("span", { class: "hs-score" }, el("b", { text: Number(e.score).toLocaleString() }), el("small", { text: mode.scoreLabel || "Score" }))
           );
@@ -1017,18 +1332,21 @@ function renderHighScores(selectedId) {
 
 loadCatalog().catch((err) => toast(`Couldn't load topics: ${err.message}`, "error", 5000));
 
-/** A shared link looks like  /?join=483920  -> open the Join screen with the code filled in. */
-function joinCodeFromUrl() {
-  const fromQuery = new URLSearchParams(window.location.search).get("join");
-  const fromHash = /(?:^#|&)join=(\d{1,6})/.exec(window.location.hash || "");
-  const code = String(fromQuery || (fromHash && fromHash[1]) || "").replace(/\D/g, "").slice(0, 6);
-  return code || null;
+/**
+ * A shared link looks like  /?join=483920  (or  /#join=483920): open the Join screen with the code
+ * filled in. Returns null for a normal visit, otherwise {code} (code is "" when the link had none).
+ */
+function joinLinkFromUrl() {
+  const query = new URLSearchParams(window.location.search);
+  const fromHash = /(?:^#|&)join=([^&]*)/.exec(window.location.hash || "");
+  if (!query.has("join") && !fromHash) return null;
+  return { code: String(query.get("join") || (fromHash && fromHash[1]) || "").replace(/\D/g, "").slice(0, 6) };
 }
 
-const startCode = joinCodeFromUrl();
-if (startCode) {
-  window.history.replaceState(null, "", window.location.pathname);
-  openJoin(startCode);
+const joinLink = joinLinkFromUrl();
+if (joinLink) {
+  window.history.replaceState(null, "", window.location.pathname); // the code is only needed once
+  openJoin(joinLink.code || undefined);
 } else {
   renderHome();
 }
