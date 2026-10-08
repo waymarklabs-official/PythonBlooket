@@ -1352,8 +1352,17 @@ const joinLink = joinLinkFromUrl();
 if (joinLink) {
   window.history.replaceState(null, "", window.location.pathname); // the code is only needed once
   openJoin(joinLink.code || undefined);
+} else if (recentSavedPlayer()) {
+  // A student who reloaded (or lost the tab) mid-game goes straight back into it.
+  openJoin(recentSavedPlayer().code);
 } else {
   renderHome();
+}
+
+/** The saved student session, only if it is from the last few hours (a game lasts a class period). */
+function recentSavedPlayer() {
+  const saved = savedPlayer.get();
+  return saved && Date.now() - Number(saved.at || 0) < 3 * 60 * 60 * 1000 ? saved : null;
 }
 
 // Exposed for debugging / tests.

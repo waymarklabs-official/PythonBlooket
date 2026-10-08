@@ -465,6 +465,8 @@ function buildMatch(host) {
   const rows = [];
 
   const block = q.code ? codeBlock(q.code) : null;
+  // On a phone a dropdown only gets half the row: stack every row when any option is long.
+  const longOptions = spec.options.some((opt) => opt.length > 14);
   const list = el(
     "div",
     { class: "qv-match", role: "group", "aria-label": "Match each item" },
@@ -480,7 +482,7 @@ function buildMatch(host) {
       const fix = el("div", { class: "qv-fix", hidden: true });
       const row = el(
         "div",
-        { class: ["qv-match-row", item.length > 13 ? "is-long" : ""] },
+        { class: ["qv-match-row", item.length > 13 || longOptions ? "is-long" : ""] },
         el("div", { class: ["qv-match-item", LOOKS_LIKE_CODE.test(item) ? "is-code" : ""], text: item }),
         el("div", { class: "qv-match-pick" }, select, mark),
         fix
