@@ -100,7 +100,12 @@ export function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-/** Turn `backtick` spans into <code>; everything else is HTML-escaped. Returns an HTML string. */
+/** `**bold**` outside code spans: the markers must hug the text, so `a ** b ** c` stays maths. */
+function boldMarkers(escaped) {
+  return escaped.replace(/\*\*(?=\S)([^*]+?)(?<=\S)\*\*/g, "<strong>$1</strong>");
+}
+
+/** Turn `backtick` spans into <code> and **bold** into <strong>; everything else is HTML-escaped. Returns an HTML string. */
 export function renderInlineCode(text) {
   const parts = String(text ?? "").split("`");
   // An odd number of backticks leaves the last one unmatched: show it literally.
@@ -112,7 +117,7 @@ export function renderInlineCode(text) {
     } else if (isCode) {
       html += `<code class="inline-code">${escapeHtml(parts[i])}</code>`;
     } else {
-      html += escapeHtml(parts[i]);
+      html += boldMarkers(escapeHtml(parts[i]));
     }
   }
   return html;
