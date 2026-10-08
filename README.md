@@ -6,7 +6,7 @@ A Blooket-style Python quiz game for the classroom. Questions are generated on t
 | Format | What the player does | How it is graded |
 |---|---|---|
 | **Multiple choice** | picks one of four answers | by index |
-| **Fill in the blanks** | types the missing pieces of a code snippet (`word[⟦0⟧:⟦4⟧]`, `text.⟦strip⟧()`) | compared with the accepted spellings |
+| **Fill in the blanks** | types the missing pieces of a code snippet (like the `4` in `word[0:4]` or `strip` in `text.strip()`) | compared with the accepted spellings |
 | **Matching** | matches each item to its type / result / meaning | by index |
 | **Write the code** | types real Python – an expression, a function or a whole program that uses `input()` | **run in a sandbox** against hidden tests |
 
@@ -81,7 +81,7 @@ questions keep working; no student code is ever executed).
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                      # ~1,500 tests; add -k "topics.strings" to run one topic
+pytest                      # ~2,700 tests; add -k "topics.strings" to run one topic
 ```
 
 Layout: `app.py` (Flask app + solo API) · `pyblooket/questions/` (generators, formats, grading) · `pyblooket/sandbox.py` +

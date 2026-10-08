@@ -2916,10 +2916,13 @@ def gen_code_grow_until(rng: random.Random) -> Question:
         )
         why = f"Start a week counter at 0. While {thing} is still below goal, add weekly and add 1 to the counter. If it is already enough, the answer is 0."
     else:
-        fuel, use, unit, label = rng.choice(
-            [("fuel", "use", "launch", "Launches:"), ("energy", "cost", "move", "Moves:"), ("money", "price", "snack", "Snacks:")]
+        fuel, use, unit, counter, label = rng.choice(
+            [
+                ("fuel", "use", "launch", "launches", "Launches:"),
+                ("energy", "cost", "move", "moves", "Moves:"),
+                ("money", "price", "snack", "snacks", "Snacks:"),
+            ]
         )
-        counter = unit + "s"
         solution = _lines(
             f"{counter} = 0",
             f"while {fuel} >= {use}:",
@@ -2931,7 +2934,7 @@ def gen_code_grow_until(rng: random.Random) -> Question:
         cases = [Case(vars={fuel: f, use: u}, out=f"{label} {f // u}") for f, u in data]
         prompt = (
             f"The variables `{fuel}` and `{use}` are already set. Each {unit} uses `{use}` of `{fuel}` and you can't go below 0. "
-            f"Use a `while` loop to count how many {counter} are possible, then print `{label} ` and that number."
+            f"Use a `while` loop to count how many {counter} are possible, then print `{label}` and that number."
         )
         why = f"Keep going while there is still enough: `{fuel} >= {use}`. Each pass subtracts {use} and adds 1 to the counter. Print the counter after the loop."
     task = program_task(solution, cases, starter="", examples=2, requires=_NEED_WHILE)
