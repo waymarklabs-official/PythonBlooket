@@ -176,7 +176,6 @@ function syncFullscreenButtons() {
   for (const btn of document.querySelectorAll(".hs-fs-btn")) {
     btn.setAttribute("aria-pressed", String(on));
     btn.querySelector(".hs-fs-label").textContent = on ? "Exit fullscreen" : "Fullscreen";
-    btn.querySelector(".hs-fs-icon").textContent = on ? "🡼" : "⛶";
   }
 }
 
@@ -1131,7 +1130,7 @@ class HostGame {
     return el(
       "button",
       { class: "btn btn-ghost btn-sm hs-fs-btn", type: "button", title: "Fullscreen (F)", "aria-pressed": String(on), onClick: () => toggleFullscreen() },
-      el("span", { class: "hs-fs-icon", "aria-hidden": "true", text: on ? "🡼" : "⛶" }),
+      el("span", { class: "hs-fs-icon", "aria-hidden": "true", text: "⛶" }),
       el("span", { class: "hs-fs-label", text: on ? "Exit fullscreen" : "Fullscreen" })
     );
   }

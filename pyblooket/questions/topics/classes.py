@@ -10,7 +10,7 @@ than `__init__`, class attributes, `@property` or any other idea the lesson does
 
 Imports cannot run in the code sandbox, so questions about `import` are multiple choice, blanks or
 matching only.  Class and method questions are typed code: the player writes the class and a hidden
-`after=` harness creates the objects and prints the results.  Wherever an answer depends on running
+`after=` harness creates the objects and stores what their methods return in variables.  Wherever an answer depends on running
 code, it is computed by running the snippet (``output_question``), so the questions are correct by
 construction.
 """
@@ -976,7 +976,7 @@ def gen_pick_correct_class(rng: random.Random) -> Question:
         prompt=f"Which version of the `{name}` class is written correctly?",
         correct=good,
         distractors=[bad[p] for p in picks],
-        explanation="The correct version has `self` in every method and stores and reads the values with `self.`. The others slip: " + " ".join(why[p] for p in picks),
+        explanation="Only one version follows the lesson's pattern: `self` in every method, and `self.` to store and read the values. " + " ".join(why[p] for p in picks),
         rng=rng,
     )
 
@@ -1615,8 +1615,8 @@ def gen_code_class_with_input(rng: random.Random) -> Question:
 def gen_code_rectangle_is_square(rng: random.Random) -> Question:
     """Rectangle with area(), perimeter() and is_square() (returns True/False)."""
     squares = rng.sample([(4, 4), (6, 6), (9, 9), (5, 5), (7, 7)], 2)
-    oblongs = rng.sample([(3, 5), (2, 7), (8, 3), (10, 4), (5, 6)], 2)
-    sets = [squares[0], oblongs[0], oblongs[1], squares[1]]
+    wide, tall = rng.choice([(8, 3), (10, 4), (7, 2), (9, 5)]), rng.choice([(3, 5), (2, 7), (4, 9), (5, 6)])
+    sets = [squares[0], tall, wide, squares[1]]
     solution = (
         "class Rectangle:\n    def __init__(self, width, height):\n        self.width = width\n        self.height = height\n\n"
         "    def area(self):\n        return self.width * self.height\n\n"

@@ -61,7 +61,6 @@ OP_DOES = {
 }
 OP_FACT = {op: f"`{op}` {does}." for op, does in OP_DOES.items()}
 
-NUM_VARS = ["score", "total", "count", "points", "money", "coins", "price", "number"]
 
 
 # --------------------------------------------------------------------------
@@ -280,6 +279,7 @@ def gen_print_result(rng: random.Random) -> Question:
                 continue
             if len(text) <= 12:
                 wrong.append(text)
+        wrong.sort(key=lambda w: len(w) > 6)  # tidy numbers first: 6 ** 7 = 279936 is a giveaway
         return output_question(
             topic=TOPIC,
             difficulty=EASY,
@@ -830,6 +830,8 @@ def _mistake_explain(rng: random.Random) -> Question:
     which = rng.choice(["average", "square", "remainder", "floor_avg", "last_digit"])
     if which == "average":
         a, b = rng.randint(60, 99), rng.choice([70, 80, 90, 100])
+        if a == b:
+            raise GenerationError("a and b should differ")
         code = f"a = {a}\nb = {b}\naverage = a + b / 2\nprint(average)"
         goal = f"the average of a and b ({(a + b) / 2})"
         correct = "Division happens before addition, so only b is halved"
@@ -1494,7 +1496,7 @@ def gen_match_precedence(rng: random.Random) -> Question:
             rng=rng,
         )
 
-    return _tries(build)
+    return _tries(build, 400)
 
 
 # --------------------------------------------------------------------------

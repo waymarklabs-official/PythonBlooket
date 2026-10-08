@@ -2602,6 +2602,10 @@
 }
 
 @media (max-width: 640px) {
+  .hs-title {
+    display: none;
+  }
+
   .hs-bigcode {
     font-size: calc(var(--hs-u) * 4.4);
   }
