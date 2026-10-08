@@ -8,7 +8,7 @@
  * choice / Typing) and the difficulty; renderGame() hands the choices to the engine and the QuestionFeed.
  */
 
-import { fetchTopics, QuestionFeed } from "./api.js";
+import { ApiError, QuestionFeed } from "./api.js";
 import { isAbortError, startGame } from "./engine.js";
 import { playLookup, prettyCode, savedHost, savedPlayer } from "./hostapi.js";
 import { renderHost } from "./host.js";
@@ -34,6 +34,7 @@ const SETTINGS_KEY = "pyblooket.settings";
 const HIGHSCORES_KEY = "pyblooket.highscores";
 const MAX_SCORES = 10;
 const NAME_MAX = 16;
+const CATALOG_TIMEOUT_MS = 12000;
 
 const MODE_COLORS = {
   gold: "#ffb703",
@@ -146,17 +147,22 @@ function recordHighScore(modeId, entry) {
 // Catalogue (topics, difficulties and question types from the server)
 // ---------------------------------------------------------------------------
 
-/** GET /api/topics, including the fields fetchTopics() may not hand on (type_presets, code_enabled). */
+/** GET /api/topics: the whole payload (fetchTopics() in api.js only hands on topics and difficulties). */
 async function fetchCatalog() {
-  const data = await fetchTopics();
-  if (data.type_presets && typeof data.code_enabled === "boolean") return data;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CATALOG_TIMEOUT_MS);
   try {
-    const res = await fetch("/api/topics", { headers: { Accept: "application/json" } });
-    if (res.ok) return { ...data, ...(await res.json()) };
-  } catch {
-    /* fall back to the defaults below */
+    const res = await fetch("/api/topics", { headers: { Accept: "application/json" }, signal: ctrl.signal });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError((data && data.error) || `Server error (${res.status})`, res.status);
+    if (!data || typeof data !== "object") throw new ApiError("Bad response from server", res.status);
+    return data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError("Can't reach the PyBlooket server.", 0);
+  } finally {
+    clearTimeout(timer);
   }
-  return data;
 }
 
 /**
@@ -383,9 +389,8 @@ function resumeButton(label, saved, onClick, forget) {
   const btn = el(
     "button",
     { class: "btn btn-sm btn-white classroom-resume", type: "button", onClick },
-    el("span", { "aria-hidden": "true", text: "↩ " }),
-    label,
-    " ",
+    el("span", { "aria-hidden": "true", text: "↩" }),
+    el("span", { text: label }),
     el("b", { class: "classroom-resume-code", text: prettyCode(saved.code) })
   );
   playLookup(saved.code).catch((err) => {
@@ -454,7 +459,7 @@ function renderHome() {
         color: "btn-yellow",
         icon: "🎮",
         title: "Host a game",
-        sub: "Teachers: show a code on the projector",
+        sub: "Teachers: run a live class game",
         onClick: () => {
           sfx("click");
           openHost();
@@ -469,7 +474,7 @@ function renderHome() {
         color: "btn-green",
         icon: "🙋",
         title: "Join a game",
-        sub: "Students: enter the code on your device",
+        sub: "Students: type in your code",
         onClick: () => {
           sfx("click");
           openJoin();

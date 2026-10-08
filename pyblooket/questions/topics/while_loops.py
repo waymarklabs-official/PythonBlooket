@@ -368,6 +368,36 @@ _HOW_WHILE_WORKS = [
         ["The update", "The initialization", "The `print()` call"],
         "\"There are dishes\" is the test that keeps the loop going, which is the condition.",
     ),
+    (
+        "Which lines belong to the body of a `while` loop?",
+        "The indented lines under the `while` line",
+        ["Every line in the file", "Only the `while` line itself", "The lines above the `while` line"],
+        "The indented block under `while condition:` is what repeats; unindented lines before or after it are not part of the loop.",
+    ),
+    (
+        "What must the end of a `while` line look like?",
+        "A colon `:` after the condition",
+        ["A semicolon `;`", "The word `do`", "Nothing, a colon is optional"],
+        "Like `if`, a `while` line ends with a colon and is followed by an indented block.",
+    ),
+    (
+        "A `while` loop is a good fit when you...",
+        "Want to repeat code until something changes",
+        ["Want to run code exactly one time", "Need to choose between two paths", "Need to store one value in a variable"],
+        "Decisions let a program pick one path; loops let it repeat actions.",
+    ),
+    (
+        "How do you run the file `loops_p1_lab.py` from the VS Code terminal?",
+        "`python3 loops_p1_lab.py`",
+        ["`run loops_p1_lab.py`", "`python loops_p1_lab`", "`open loops_p1_lab.py`"],
+        "In the terminal, type `python3` followed by the file name: `python3 loops_p1_lab.py`.",
+    ),
+    (
+        "What is the main job of a loop?",
+        "To repeat actions",
+        ["To pick one path out of two", "To store a value", "To change a value's type"],
+        "Decisions let a program pick one path; loops let it repeat actions.",
+    ),
 ]
 
 
@@ -423,6 +453,42 @@ _LOOP_VOCAB = [
         "`count += 1`",
         ["`count = 1`", "`while count <= 5:`", "`count <= 5`"],
         "`count += 1` changes the counter each time around, which is what an update does.",
+    ),
+    (
+        "Which is the initialization in `count = 1`, `while count <= 5:`, `count += 1`?",
+        "`count = 1`",
+        ["`count += 1`", "`while count <= 5:`", "`count <= 5`"],
+        "`count = 1` sets the starting value once, before the loop begins.",
+    ),
+    (
+        "Which is the condition in `count = 1`, `while count <= 5:`, `count += 1`?",
+        "`count <= 5`",
+        ["`count = 1`", "`count += 1`", "`print(count)`"],
+        "The condition is the test after `while`; the loop runs as long as it is True.",
+    ),
+    (
+        "The lesson calls `count += 1` an \"update (increment)\". What does an increment do?",
+        "Adds to the value",
+        ["Subtracts from the value", "Resets the value to 0", "Prints the value"],
+        "An increment like `count += 1` raises the value by 1 each time.",
+    ),
+    (
+        "Why should you plan the update first when you write a `while` loop?",
+        "So the condition can eventually become False",
+        ["So the loop prints faster", "So Python skips the condition", "So the loop runs exactly once"],
+        "If nothing in the loop changes, the condition never changes either, and the loop runs forever.",
+    ),
+    (
+        "Your loop behaves strangely. Which habit from the lesson helps you debug it?",
+        "Print key values, like the counter, to see what is happening",
+        ["Delete the loop and start over", "Add more `break` statements", "Make the counter a string"],
+        "Quality check: print key values for quick debugging (for example, the counter) if behavior looks off.",
+    ),
+    (
+        "When does the initialization (like `count = 1`) run?",
+        "Once, before the loop starts",
+        ["On every pass of the loop", "After the loop ends", "Only when the user types `quit`"],
+        "The initialization sets the starting value one time, above the `while` line.",
     ),
 ]
 
@@ -495,6 +561,30 @@ _CTRL_C = [
         ["It saves your file", "It starts the loop over", "It fixes the missing update"],
         "Ctrl + C only stops the runaway program. You still need to fix the code (add the update).",
     ),
+    (
+        "You are testing a loop and it floods the terminal with \"Stuck here forever...\". What do you do first?",
+        "Press Ctrl + C to stop it",
+        ["Press Command + C to copy the loop", "Press the Escape key", "Type `quit` and hope it stops"],
+        "Safety: if you accidentally create an infinite loop while testing, press Ctrl + C to stop it.",
+    ),
+    (
+        "Where do you press Ctrl + C to stop a runaway loop?",
+        "In the terminal where the program is running",
+        ["In the Explorer sidebar", "In the Canvas assignment page", "In a new empty file"],
+        "The program runs in the VS Code terminal, so that is where Ctrl + C interrupts it.",
+    ),
+    (
+        "Which key does the lesson say to use on a Mac for stopping a runaway loop?",
+        "Control, not Command",
+        ["Command, not Control", "Option, not Control", "Shift, not Command"],
+        "Use Control + C. Command + C is the copy shortcut and does not stop the program.",
+    ),
+    (
+        "After you stop a runaway loop with Ctrl + C, what should you do next?",
+        "Fix the code (for example, add the update)",
+        ["Run the same code again", "Delete the file", "Change the file name"],
+        "Ctrl + C only stops the program. The loop still has a bug that you need to fix.",
+    ),
 ]
 
 
@@ -510,7 +600,7 @@ _BREAK_WORDS = ["stop", "exit", "end", "quit", "halt"]
 @generator(TOPIC, EASY)
 def gen_break_keyword(rng: random.Random) -> Question:
     """Quiz: 'Which keyword exits a loop early?' / what `break` does."""
-    kind = rng.choice(["keyword", "keyword_quiz", "does", "does", "next", "where"])
+    kind = rng.choice(["keyword", "keyword_quiz", "does", "does", "next", "where", "needs_if", "after"])
     if kind == "keyword_quiz":
         return _choice(
             difficulty=EASY,
@@ -538,7 +628,7 @@ def gen_break_keyword(rng: random.Random) -> Question:
             prompt="What does `break` do inside a `while` loop?",
             correct="Exits the loop immediately",
             distractors=[
-                "Skips to the next pass of the loop",
+                "Starts the loop over from the first pass",
                 "Ends the whole program",
                 "Pauses the loop until the user presses a key",
             ],
@@ -556,6 +646,32 @@ def gen_break_keyword(rng: random.Random) -> Question:
                 "Nothing - the program ends",
             ],
             explanation="`break` leaves the loop and control returns to the outer (left-aligned) level, so the code after the loop runs.",
+            rng=rng,
+        )
+    if kind == "needs_if":
+        return _choice(
+            difficulty=EASY,
+            prompt="Why is a `break` usually written inside an `if`?",
+            correct="So the loop only ends when the stop condition is met",
+            distractors=[
+                "Because `break` only works with numbers",
+                "So the loop runs faster",
+                "Because `break` needs a colon after it",
+            ],
+            explanation="Without an `if`, `break` would end the loop on the very first pass. The `if` makes it happen only at the right moment.",
+            rng=rng,
+        )
+    if kind == "after":
+        return _choice(
+            difficulty=EASY,
+            prompt="A loop ends because of a `break`. Which statement is true?",
+            correct="The program continues with the code after the loop",
+            distractors=[
+                "The program stops completely",
+                "The loop starts again from the top",
+                "Python asks the user whether to keep going",
+            ],
+            explanation="`break` exits the current loop immediately and returns control to the outer (left-aligned) level.",
             rng=rng,
         )
     return _choice(
@@ -598,6 +714,30 @@ _WHILE_TRUE = [
         "`True`, which is always true",
         ["`while`, which is the loop keyword", "The text the user types", "There is no condition"],
         "`while True:` has the condition `True`, so the loop only ends with `break`.",
+    ),
+    (
+        "Which programs are a good fit for `while True:` with `break`?",
+        "Menus and quizzes that repeat until the user quits",
+        ["Programs that print one line", "Programs that never ask for input", "Programs with no loops at all"],
+        "Use it for repeated input when you don't know how many rounds you'll need.",
+    ),
+    (
+        "What does the lesson call a loop made with `while True:` and a `break`?",
+        "A controlled infinite loop",
+        ["A countdown loop", "A syntax error", "A broken loop"],
+        "It would run forever, but you decide inside the loop when to stop with `break`.",
+    ),
+    (
+        "A `while True:` loop has no `break` inside. What happens when you run it?",
+        "It runs forever until you press Ctrl + C",
+        ["It runs once and stops", "Python refuses to run it", "It stops after 10 passes"],
+        "Nothing makes `True` False, and there is no `break`, so you must stop it with Ctrl + C.",
+    ),
+    (
+        "In `while True:` with `break`, where does the `break` usually go?",
+        "Inside an `if` that checks for the stop word",
+        ["On the same line as `while`", "Before the `while` line", "At the very end of the file"],
+        "A `break` inside an `if` ends the loop only when the stop condition is met.",
     ),
 ]
 
@@ -728,6 +868,53 @@ def gen_countdown_header(rng: random.Random) -> Question:
         correct=correct,
         distractors=head + tail,
         explanation=f"The loop must keep going while {var} is still 1 or more, so use `{correct}`. A condition like `{var} >= 0` would print 0 as well.",
+        rng=rng,
+    )
+
+
+_HEADER_KINDS = [
+    # (what the loop should do, comparison, value is the same as n?, explanation)
+    ("`{var}` is at most {n}", "<=", "{n}", "\"At most\" means less than or equal to, so use `<=`."),
+    ("`{var}` is less than {n}", "<", "{n}", "\"Less than\" does not include {n} itself, so use `<`."),
+    ("`{var}` is still above 0", ">", "0", "\"Above 0\" means greater than 0, so use `>`."),
+    ("`{var}` is at least 1", ">=", "1", "\"At least 1\" means greater than or equal to 1, so use `>=`."),
+    ("`{var}` is not {n} yet", "!=", "{n}", "\"Not equal\" is written `!=`."),
+]
+_HEADER_FLIPS = {"<=": ["<", ">="], "<": ["<=", ">"], ">": [">=", "<"], ">=": [">", "<="], "!=": ["==", "<"]}
+
+
+@generator(TOPIC, EASY)
+def gen_valid_header(rng: random.Random) -> Question:
+    """Which `while` line is written correctly (colon, `==` vs `=`) AND does what is asked."""
+    var = _var(rng)
+    n = rng.randint(3, 9)
+    want, op, value, why = rng.choice(_HEADER_KINDS)
+    value = value.format(n=n)
+    good = f"while {var} {op} {value}:"
+    compile(good + "\n    pass", "<h>", "exec")  # the correct line must be valid Python
+    syntax_bad = [
+        f"while {var} {op} {value}",
+        f"while {var} = {value}:",
+        f"while {var} {op} {value};",
+        f"while: {var} {op} {value}",
+        f"while {var} {op} {value} then:",
+    ]
+    ok_syntax = []
+    for line in syntax_bad:
+        try:
+            compile(line + "\n    pass", "<h>", "exec")
+        except SyntaxError:
+            ok_syntax.append(line)
+    if len(ok_syntax) < 3:
+        raise GenerationError("expected syntax errors")
+    rng.shuffle(ok_syntax)
+    flip = f"while {var} {rng.choice(_HEADER_FLIPS[op])} {value}:"
+    return _choice(
+        difficulty=EASY,
+        prompt=f"Which line starts a `while` loop that keeps going while {want.format(var=var, n=n)}?",
+        correct=good,
+        distractors=[flip, *ok_syntax[:2]],
+        explanation=f"A `while` line is the word `while`, the condition, and a colon. {why}",
         rng=rng,
     )
 
@@ -982,7 +1169,7 @@ def gen_password_trace(rng: random.Random) -> Question:
         MEDIUM,
         code,
         rng,
-        f"Each wrong guess prints \"Wrong, try again.\" and asks again. The loop ends when the guess equals `{secret}` (capital letters count), then \"Welcome!\" prints. Wrong guesses here: {k}.",
+        f"Each wrong guess prints \"Wrong, try again.\" and asks again. The loop ends when the guess equals `{secret}`, then \"Welcome!\" prints. Wrong guesses here: {k}." + (f" (`{secret.upper()}` is not the same as `{secret}`: capital letters count.)" if secret.upper() in guesses else ""),
         stdin=guesses,
         prompt=f"The player types {_typed(guesses)}. What does the program print?",
         extras=extras,
@@ -1165,6 +1352,95 @@ def gen_update_position(rng: random.Random) -> Question:
     return _trace(MEDIUM, code, rng, why, extras=[_sim(other)[0], _sim(flip)[0]], mutations=[(f"{var} = {start}\n", f"{var} = {start + 1}\n")])
 
 
+@generator(TOPIC, MEDIUM)
+def gen_countdown_cast(rng: random.Random) -> Question:
+    """Mini-Challenge Countdown: `input()` gives a string, so the first line needs `int()`."""
+    var = rng.choice(["start", "num", "count", "number"])
+    finale = rng.choice(_FINALES)
+    typed = rng.randint(3, 6)
+    ask = 'input("Start at: ")'
+    rest = [f"while {var} >= 1:", f"    print({var})", f"    {var} -= 1", f'print("{finale}")']
+    broken = _lines(f"{var} = {ask}", *rest)
+    fixed = f"{var} = int({ask})"
+    want = _must_run(_lines(fixed, *rest), [str(typed)])
+    if _sim(broken, [str(typed)])[1] != "TypeError":
+        raise GenerationError("expected a TypeError")
+    cands = [
+        f"{var} = str({ask})",
+        f"{var} = {ask} + 0",
+        f"{var} = print({ask})",
+        f"{var} = input(int(\"Start at: \"))",
+        f"{var} = {ask}.int()",
+    ]
+    wrong = [c for c in cands if _sim(_lines(c, *rest), [str(typed)])[:2] != (want, None)]
+    rng.shuffle(wrong)
+    return _choice(
+        difficulty=MEDIUM,
+        prompt=f"The player types `{typed}`, but this Countdown program crashes with a TypeError. Which version of the first line fixes it?",
+        code=broken,
+        correct=fixed,
+        distractors=wrong,
+        explanation=f"`input()` always gives a string, and a string can't be compared with the number 1. Cast it with `int()`: `{fixed}`.",
+        rng=rng,
+    )
+
+
+def _finite_loop(rng: random.Random, var: str, used: set) -> str:
+    """A small loop that DOES end (for 'which loop never ends' choices)."""
+    for _ in range(20):
+        kind = rng.choice(["up", "down", "step", "break"])
+        n = rng.randint(3, 9)
+        if kind == "up":
+            code = _lines(f"{var} = 1", f"while {var} <= {n}:", f"    print({var})", f"    {var} += 1")
+        elif kind == "down":
+            code = _lines(f"{var} = {n}", f"while {var} > 0:", f"    print({var})", f"    {var} -= 1")
+        elif kind == "step":
+            code = _lines(f"{var} = 0", f"while {var} < {n * 2}:", f"    print({var})", f"    {var} += 2")
+        else:
+            code = _lines(f"{var} = 0", "while True:", f"    {var} += 1", f"    if {var} == {n}:", "        break")
+        if kind not in used:
+            used.add(kind)
+            if _sim(code)[1] is not None:
+                raise GenerationError("expected a loop that ends")
+            return code
+    raise GenerationError("no finite loop")
+
+
+@generator(TOPIC, MEDIUM)
+def gen_which_runs_forever(rng: random.Random) -> Question:
+    """Concept check: out of four loops, which one never ends (and why)."""
+    var = rng.choice(["count", "count", "num", "number"])
+    n = rng.randint(3, 8)
+    kind = rng.choice(["no_update", "unindented", "wrong_way", "true_no_break", "jumps_over"])
+    if kind == "no_update":
+        bad = _lines(f"{var} = 1", f"while {var} <= {n}:", f"    print({var})")
+        why = f"Nothing inside the loop changes `{var}`, so `{var} <= {n}` stays True forever."
+    elif kind == "unindented":
+        bad = _lines(f"{var} = 1", f"while {var} <= {n}:", f"    print({var})", f"{var} += 1")
+        why = f"`{var} += 1` is not indented, so it is not in the loop body. `{var}` never changes while the loop runs."
+    elif kind == "wrong_way":
+        bad = _lines(f"{var} = {n}", f"while {var} > 0:", f"    print({var})", f"    {var} += 1")
+        why = f"{var} counts up, away from 0, so `{var} > 0` never becomes False."
+    elif kind == "true_no_break":
+        bad = _lines("while True:", f"    {var} = {n}", f"    print({var})")
+        why = "`while True:` never becomes False and there is no `break`, so only Ctrl + C can stop it."
+    else:
+        bad = _lines(f"{var} = 1", f"while {var} != {2 * n}:", f"    print({var})", f"    {var} += 2")
+        why = f"{var} is odd (1, 3, 5, ...) and jumps over {2 * n}, so `{var} != {2 * n}` is always True."
+    if not _runs_forever(bad):
+        raise GenerationError("expected an infinite loop")
+    used: set[str] = set()
+    others = [_finite_loop(rng, var, used) for _ in range(3)]
+    return _choice(
+        difficulty=MEDIUM,
+        prompt=rng.choice(["Which of these loops never ends?", "Only one of these loops runs forever. Which one?"]),
+        correct=bad,
+        distractors=others,
+        explanation=why,
+        rng=rng,
+    )
+
+
 # ==========================================================================
 # HARD -- choice (a twist or two steps to trace, still only lesson ideas)
 # ==========================================================================
@@ -1307,7 +1583,7 @@ def gen_quit_count_ignored(rng: random.Random) -> Question:
         f'    if word == "{word}":',
         "        break",
         "    count += 1",
-        'print("You typed", count, "words")',
+        'print("Words typed:", count)',
     )
     n = len(before)
     return _trace(
@@ -1317,7 +1593,7 @@ def gen_quit_count_ignored(rng: random.Random) -> Question:
         f"The loop counts the {n} words typed before `{word}`. When `{word}` is read, `break` runs before `count += 1`, and the words after it are never read.",
         stdin=typed,
         prompt=f"The player types {_typed(typed)}. What does the program print?",
-        extras=[f"You typed {x} words" for x in (n + 1, len(typed), n - 1, len(typed) - 1)],
+        extras=[f"Words typed: {x}" for x in (n + 1, len(typed), n - 1, len(typed) - 1)],
     )
 
 
@@ -1492,6 +1768,62 @@ def gen_which_program_blastoff(rng: random.Random) -> Question:
     )
 
 
+@generator(TOPIC, HARD)
+def gen_stop_condition(rng: random.Random) -> Question:
+    """Which `if` condition ends the `while True` loop for any capital letters / for either of two words."""
+    var = rng.choice(["text", "text", "answer", "reply"])
+    kind = rng.choice(["capitals", "either"])
+    template = _lines(
+        "while True:",
+        f'    {var} = input("Type to stop: ")',
+        "    if {cond}:",
+        "        break",
+        f'    print("You typed:", {var})',
+    )
+    if kind == "capitals":
+        word = rng.choice(["quit", "stop", "done"])
+        good = f'{var}.lower() == "{word}"'
+        cands = [
+            f'{var} == "{word}"',
+            f'{var}.upper() == "{word}"',
+            f'{var}.lower == "{word}"',
+            f'{var} == "{word.upper()}"',
+            f'{var}.lower() = "{word}"',
+        ]
+        typed = ["hi", word.capitalize(), "go"]
+        prompt = f"The loop should stop when the player types `{word}` in any capital letters (`{word}`, `{word.capitalize()}` or `{word.upper()}`). Which condition does that?"
+        why = f'`{var}.lower()` turns whatever was typed into lowercase letters first, so `{word.capitalize()}` and `{word.upper()}` also match `"{word}"`.'
+    else:
+        word1, word2 = rng.choice([("quit", "exit"), ("stop", "done"), ("quit", "stop"), ("end", "bye")])
+        good = f'{var} == "{word1}" or {var} == "{word2}"'
+        cands = [
+            f'{var} == "{word1}" and {var} == "{word2}"',
+            f'{var} == "{word1}" or "{word2}"',
+            f'{var} != "{word1}" or {var} != "{word2}"',
+            f'{var} == "{word1}"',
+            f'{var} == "{word1}" or {var} = "{word2}"',
+        ]
+        typed = ["hi", word2, "go"]
+        prompt = f"The loop should stop when the player types `{word1}` or `{word2}`. Which condition does that?"
+        why = f'Compare `{var}` with each word using `==` and join the two tests with `or`. In `{var} == "{word1}" or "{word2}"` the second part is just a non-empty string, which counts as True, so that condition is always True.'
+    ref = _sim(template.format(cond=good), typed)
+    if ref[1] is not None:
+        raise GenerationError("reference should run cleanly")
+    wrong = [c for c in cands if _sim(template.format(cond=c), typed)[:2] != ref[:2]]
+    if len(wrong) < 3:
+        raise GenerationError("not enough distinct wrong conditions")
+    rng.shuffle(wrong)
+    return _choice(
+        difficulty=HARD,
+        prompt=prompt,
+        code=template.format(cond=BLANK),
+        correct=good,
+        distractors=wrong,
+        explanation=why,
+        rng=rng,
+    )
+
+
 # ==========================================================================
 # BLANKS -- type the missing piece of a lesson-style loop
 # ==========================================================================
@@ -1525,9 +1857,37 @@ def gen_blanks_pieces(rng: random.Random) -> Question:
         blanks=[
             Blank([str(start)], hint="initialization"),
             Blank(["<="], hint="condition"),
-            Blank(["+="], hint="update"),
+            Blank(["+=", f"= {var} +"], hint="update"),
         ],
         explanation=f"Start at {start} (initialization), keep going while `{var} <= {limit}` (condition), and add 1 each time with `{var} += 1` (update).",
+        expect_output=_expect(filled),
+    )
+
+
+@generator(TOPIC, EASY, qtype="blanks")
+def gen_blanks_countdown_pieces(rng: random.Random) -> Question:
+    """The three pieces of a countdown: starting value, comparison, update (Blastoff! mini-challenge)."""
+    var = _var(rng)
+    start = rng.randint(3, 6)
+    template = _lines(
+        f"{var} = {blank_mark(1)}",
+        f"while {var} {blank_mark(2)} 0:",
+        f"    print({var})",
+        f"    {var} {blank_mark(3)} 1",
+    )
+    filled = template.replace(blank_mark(1), str(start)).replace(blank_mark(2), ">").replace(blank_mark(3), "-=")
+    nums = ", ".join(str(i) for i in range(start, 0, -1))
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=f"Fill in the three pieces so the countdown prints {nums}.",
+        template=template,
+        blanks=[
+            Blank([str(start)], hint="initialization"),
+            Blank([">", "!="], hint="condition"),
+            Blank(["-=", f"= {var} -"], hint="update"),
+        ],
+        explanation=f"Start at {start} (initialization), keep going while `{var} > 0` (condition), and subtract 1 each time with `{var} -= 1` (update).",
         expect_output=_expect(filled),
     )
 
@@ -1674,6 +2034,7 @@ def gen_blanks_accumulator(rng: random.Random) -> Question:
     """An accumulator: start the total at 0 and add the counter to it."""
     n = rng.randint(3, 6)
     acc = rng.choice(["total", "total", "score", "coins"])
+    seq = " + ".join(str(i) for i in range(1, n + 1))
     template = _lines(
         f"{acc} = {blank_mark(1)}",
         "count = 1",
@@ -1686,7 +2047,7 @@ def gen_blanks_accumulator(rng: random.Random) -> Question:
     return blanks_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt=f"Fill in the blanks so the program adds 1 + 2 + ... + {n} and prints the total.",
+        prompt=f"Fill in the blanks so the program adds {seq} and prints the total.",
         template=template,
         blanks=[
             Blank(["0"], hint="starting value"),
@@ -1701,45 +2062,72 @@ def gen_blanks_accumulator(rng: random.Random) -> Question:
 def gen_blanks_password(rng: random.Random) -> Question:
     """Bingo: password until correct -- the input() inside the loop is the update."""
     secret = rng.choice(_SECRETS)
-    template = _lines(
-        f'secret = "{secret}"',
-        'guess = input("Password: ")',
-        f"while guess {blank_mark(1)} secret:",
-        '    print("Wrong, try again.")',
-        f'    {blank_mark(2)} = input("Password: ")',
-        'print("Welcome!")',
-    )
+    target = rng.choice(["secret", "secret", "password"])
+    guess = rng.choice(["guess", "guess", "attempt", "answer"])
+    wrong_msg = rng.choice(["Wrong, try again.", "Wrong, try again.", "Try again!", "Access denied."])
+    ok_msg = rng.choice(["Welcome!", "Welcome!", "Access granted!", "You're in!"])
+    if rng.random() < 0.5:
+        template = _lines(
+            f'{target} = "{secret}"',
+            f'{guess} = input("Password: ")',
+            f"while {guess} {blank_mark(1)} {target}:",
+            f'    print("{wrong_msg}")',
+            f'    {blank_mark(2)} = input("Password: ")',
+            f'print("{ok_msg}")',
+        )
+        blanks = [Blank(["!="], hint="comparison"), Blank([guess], hint="variable")]
+        why = f"Keep looping while the guess is NOT equal to the {target} (`!=`). Asking again inside the loop and storing it in `{guess}` is the update."
+        prompt = f"Complete the loop so it keeps asking until the guess equals the {target}."
+    else:
+        template = _lines(
+            f'{target} = "{secret}"',
+            f'{guess} = {blank_mark(1)}("Password: ")',
+            f"while {guess} != {target}:",
+            f'    print("{wrong_msg}")',
+            f'    {guess} = input("Password: ")',
+            f'print("{ok_msg}")',
+        )
+        blanks = [Blank(["input"], hint="function")]
+        why = "`input(...)` asks the player to type and gives back what they typed. The loop asks once before it starts and again at the end of every pass."
+        prompt = "Fill in the blank so the program asks for the first guess before the loop starts."
     return blanks_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt="Complete the loop so it keeps asking until the guess equals the secret.",
+        prompt=prompt,
         template=template,
-        blanks=[Blank(["!="], hint="comparison"), Blank(["guess"], hint="variable")],
-        explanation="Keep looping while the guess is NOT equal to the secret (`!=`). Asking again inside the loop and storing it in `guess` is the update.",
+        blanks=blanks,
+        explanation=why,
     )
 
 
 @generator(TOPIC, MEDIUM, qtype="blanks")
 def gen_blanks_break_count(rng: random.Random) -> Question:
     """`while True` with a counter and a `break`."""
-    limit = rng.randint(3, 6)
-    var = rng.choice(["count", "count", "num"])
+    var = rng.choice(["count", "count", "num", "number", "n", "lap"])
+    if rng.random() < 0.6:
+        limit = rng.randint(3, 9)
+        head, step, goal = f"{var} = 0", f"{var} += 1", limit
+        said = f"reaches {limit}"
+    else:
+        limit = rng.randint(3, 6)
+        head, step, goal = f"{var} = {limit + rng.randint(0, 2)}", f"{var} -= 1", 0
+        said = "reaches 0"
     template = _lines(
-        f"{var} = 0",
+        head,
         f"while {blank_mark(1)}:",
-        f"    {var} += 1",
-        f"    if {var} == {limit}:",
+        f"    {step}",
+        f"    if {var} == {goal}:",
         f"        {blank_mark(2)}",
-        f"print({var})",
+        f'print("Stopped at", {var})',
     )
     filled = template.replace(blank_mark(1), "True").replace(blank_mark(2), "break")
     return blanks_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt=f"Fill in the blanks so the loop stops by itself when {var} reaches {limit}.",
+        prompt=f"Fill in the blanks so the loop stops by itself when {var} {said}.",
         template=template,
         blanks=[Blank(["True"], hint="always-true condition"), Blank(["break"], hint="exit")],
-        explanation=f"`while True:` never ends on its own, so the `if` uses `break` to leave the loop when {var} is {limit}.",
+        explanation=f"`while True:` never ends on its own, so the `if` uses `break` to leave the loop when {var} is {goal}.",
         expect_output=_expect(filled),
     )
 
@@ -1871,9 +2259,9 @@ _VOCAB_PAIRS = [
     ("`while True:`", "A loop that only ends with a `break`"),
     ("`count += 1`", "Adds 1 to count (an update)"),
     ("`count -= 1`", "Subtracts 1 from count (counts down)"),
-    ("Infinite loop", "A loop whose condition never becomes False"),
     ("`input()`", "Asks the player to type something (a string)"),
     ("Initialization", "Sets the starting value before the loop"),
+    ("Condition", "The test that keeps the loop running"),
 ]
 
 
@@ -1886,9 +2274,9 @@ def gen_match_vocab(rng: random.Random) -> Question:
         difficulty=EASY,
         prompt=rng.choice(["Match each term to what it means.", "Match each loop word or symbol to what it does."]),
         pairs=pairs,
-        explanation="These are the key words from the while-loop lesson: the loop itself, break, Ctrl + C, the update, and what an infinite loop is.",
+        explanation="These are the key words from the while-loop lesson: the loop itself, the three pieces, break, while True and Ctrl + C.",
         rng=rng,
-        extra_options=["Skips to the next pass of the loop"] if rng.random() < 0.5 else (),
+        extra_options=[rng.choice(["Shows a message on the screen", "Checks whether two values are equal"])] if rng.random() < 0.5 else (),
     )
 
 
@@ -1932,12 +2320,12 @@ def gen_match_headers(rng: random.Random) -> Question:
 
 
 _FIX_PAIRS = [
-    ("The loop never stops (no update)", "Add an update such as `count += 1` inside the loop"),
+    ("The loop is missing its update", "Add an update such as `count += 1` inside the loop"),
     ("The update line is not indented", "Indent it so it is part of the loop body"),
     ("The `while` line has no colon", "Add `:` at the end of the `while` line"),
     ("Blastoff! prints on every pass", "Un-indent it so it runs after the loop"),
     ("A countdown counts up and never stops", "Change `+= 1` to `-= 1`"),
-    ("Your program is stuck in a runaway loop", "Press Ctrl + C in the terminal"),
+    ("A program is stuck in a loop right now", "Press Ctrl + C in the terminal"),
     ("`count = 1` is inside the loop", "Move it above the `while` line"),
     ("You can't tell how many rounds you need", "Use `while True:` with a `break`"),
 ]
@@ -1986,6 +2374,46 @@ def gen_match_typed_lines(rng: random.Random) -> Question:
         explanation=f"Each answer is printed before the check, including `{word}` itself. Then `break` ends the loop, so anything typed after `{word}` is never read.",
         rng=rng,
         code=code,
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="match")
+def gen_match_loop_summaries(rng: random.Random) -> Question:
+    """Match short loop descriptions (initialization, condition, update) to what they print."""
+    var = _var(rng)
+    templates = [
+        "{v} = 1, {v} <= {n}, {v} += 1",
+        "{v} = 1, {v} < {n}, {v} += 1",
+        "{v} = 2, {v} <= {n}, {v} += 2",
+        "{v} = {n}, {v} > 0, {v} -= 1",
+        "{v} = {n}, {v} >= 0, {v} -= 1",
+        "{v} = 0, {v} < {n}, {v} += 1",
+    ]
+    rng.shuffle(templates)
+    wanted = rng.choice([4, 4, 5])
+    pairs = []
+    seen = set()
+    for text in templates:
+        n = rng.randint(3, 6)
+        item = text.format(v=var, n=n)
+        init, cond, upd = item.split(", ")
+        code = _lines(init, f"while {cond}:", f"    print({var})", f"    {upd}")
+        answer = "Prints " + ", ".join(_must_run(code).split("\n"))
+        if answer in seen:
+            continue
+        seen.add(answer)
+        pairs.append((item, answer))
+        if len(pairs) == wanted:
+            break
+    if len(pairs) < 4:
+        raise GenerationError("not enough distinct loops")
+    return match_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Each line gives a loop's initialization, condition and update, and the loop body is `print({var})`. Match each loop to what it prints.",
+        pairs=pairs,
+        explanation="Trace each loop: start at the initialization, print while the condition is True, and apply the update each time.",
+        rng=rng,
     )
 
 
@@ -2110,21 +2538,28 @@ def gen_code_count_up(rng: random.Random) -> Question:
     label = _LABELS[var]
     labelled = rng.random() < 0.6
     body = f'print("{label}", {var})' if labelled else f"print({var})"
-    solution = _lines(f"{var} = 1", f"while {var} <= limit:", f"    {body}", f"    {var} += 1")
+    kind = rng.choice(["from_one", "from_one", "from_start"])
 
-    def out(n):
-        return _lines_out((f"{label} {i}" if labelled else i) for i in range(1, n + 1))
+    def out(a, b):
+        return _lines_out((f"{label} {i}" if labelled else i) for i in range(a, b + 1))
 
-    cases = [Case(vars={"limit": n}, out=out(n)) for n in (3, 5, 1, 7, 0)]
     shown = f"`{label} 1`, `{label} 2`, ..." if labelled else "`1`, `2`, `3`, ..."
-    task = program_task(solution, cases, starter=f"{var} = 1\n", examples=2, requires=_NEED_WHILE)
-    return code_question(
-        topic=TOPIC,
-        difficulty=EASY,
-        prompt=f"The variable `limit` is already set. Write a `while` loop that prints {shown} up to `limit`, one per line.",
-        task=task,
-        explanation=f"Initialize `{var} = 1`, loop while `{var} <= limit`, print, and update with `{var} += 1`.",
-    )
+    if kind == "from_one":
+        solution = _lines(f"{var} = 1", f"while {var} <= limit:", f"    {body}", f"    {var} += 1")
+        cases = [Case(vars={"limit": n}, out=out(1, n)) for n in (3, 5, 1, 7, 0)]
+        prompt = f"The variable `limit` is already set. Write a `while` loop that prints {shown} up to `limit`, one per line."
+        starter = f"{var} = 1\n"
+        why = f"Initialize `{var} = 1`, loop while `{var} <= limit`, print, and update with `{var} += 1`."
+    else:
+        solution = _lines(f"{var} = first", f"while {var} <= limit:", f"    {body}", f"    {var} += 1")
+        pairs = [(3, 6), (1, 4), (5, 5), (2, 7), (6, 4)]
+        cases = [Case(vars={"first": a, "limit": b}, out=out(a, b)) for a, b in pairs]
+        shown = f"`{label} 3`, `{label} 4`, ..." if labelled else "`3`, `4`, `5`, ..."
+        prompt = f"The variables `first` and `limit` are already set. Write a `while` loop that starts at `first` and prints {shown} up to `limit`, one per line (if `first` is already past `limit`, print nothing)."
+        starter = ""
+        why = f"Start the counter at `first` (`{var} = first`), loop while `{var} <= limit`, print, and update with `{var} += 1`."
+    task = program_task(solution, cases, starter=starter, examples=2, requires=_NEED_WHILE)
+    return code_question(topic=TOPIC, difficulty=EASY, prompt=prompt, task=task, explanation=why)
 
 
 # ---- MEDIUM -------------------------------------------------------------------
@@ -2142,12 +2577,19 @@ def gen_code_countdown(rng: random.Random) -> Question:
         f"    {var} -= 1",
         f'print("{finale}")',
     )
-    cases = [Case(stdin=[str(n)], out=_lines_out([*range(n, 0, -1), finale])) for n in (5, 3, 1, 8, 10)]
+    cases = [Case(stdin=[str(n)], out=_lines_out([*range(n, 0, -1), finale])) for n in (5, 3, 1, 8, 10, 7)]
     task = program_task(solution, cases, starter=f'{var} = int(input("Start at: "))\n', examples=2, requires=_NEED_WHILE)
+    intro = rng.choice(
+        [
+            "Write a program that asks for a starting number with `input()` (a positive integer), ",
+            "Mini-Challenge Countdown: write a program that asks for a starting number with `input()` (a positive integer), ",
+            "A rocket needs a countdown. Write a program that asks for the starting number with `input()` (a positive integer), ",
+        ]
+    )
     return code_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt=f"Write a program that asks for a starting number with `input()` (a positive integer), counts down to 1 one number per line, and then prints `{finale}`",
+        prompt=f"{intro}counts down to 1 one number per line, and then prints `{finale}`.",
         task=task,
         explanation=f"Cast the input with `int()`, loop while the number is 1 or more, print it and subtract 1, then print `{finale}` after the loop (not indented).",
     )
@@ -2229,6 +2671,12 @@ _STEP_KINDS = [
     ("the odd numbers", 1, 2),
     ("the multiples of 10", 10, 10),
     ("the multiples of 4", 4, 4),
+    ("the multiples of 6", 6, 6),
+    ("the multiples of 7", 7, 7),
+    ("the numbers counting by 5s", 0, 5),
+    ("the numbers counting by 10s", 0, 10),
+    ("the numbers counting by 2s", 0, 2),
+    ("the numbers counting by 3s", 1, 3),
 ]
 
 
@@ -2304,7 +2752,7 @@ def gen_code_launch_fn(rng: random.Random) -> Question:
     return code_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt=f"Write a function `{fn}(n)` that uses a `while` loop to print n, n-1, ..., 1 (one per line) and then prints `{finale}`",
+        prompt=f"Write a function `{fn}(n)` that uses a `while` loop to print n, n-1, ..., 1 (one per line) and then prints `{finale}`.",
         task=task,
         explanation=f"Loop while n is 1 or more: print it, subtract 1. After the loop print `{finale}`. If n is 0 only `{finale}` prints.",
     )
@@ -2378,7 +2826,7 @@ def gen_code_sum_until_zero(rng: random.Random) -> Question:
         difficulty=HARD,
         prompt=f"Write a program that keeps asking the player for positive numbers (use `input()` and `int()`). When they type {stop}, stop asking and {want}. The {stop} itself is not one of the numbers.",
         task=task,
-        explanation=f"Ask once before the loop and again at the end of each pass. The loop ends when the number is {stop}, so it never gets added; keep the running values in variables created before the loop.",
+        explanation=f"Ask once before the loop and again at the end of each pass. The loop ends when the number is {stop}, so it never gets added. Create the running variables (like the total) before the loop.",
     )
 
 
@@ -2564,4 +3012,182 @@ def gen_code_guess_game(rng: random.Random) -> Question:
         prompt=f"The variable `secret` is already set. Write a program that keeps asking for guesses (`input()` then `int()`). After a wrong guess print `{low}` if it is under the secret or `{high}` if it is over. When the guess is right, print `{end} ` and the number of guesses.",
         task=task,
         explanation="Count a try on every pass. Loop while the guess is not the secret; inside, read the guess, add 1 to tries, and print the right hint. Print the tries after the loop.",
+    )
+
+
+# ---- more programs ---------------------------------------------------------------
+
+
+@generator(TOPIC, EASY, qtype="code")
+def gen_code_blastoff_fixed(rng: random.Random) -> Question:
+    """Bingo: 'countdown from 5 to 1 and print Blastoff!' with the start value preset."""
+    var = rng.choice(["start", "num", "count", "number"])
+    finale = rng.choice(_FINALES)
+    solution = _lines(f"while {var} >= 1:", f"    print({var})", f"    {var} -= 1", f'print("{finale}")')
+    cases = [Case(vars={var: n}, out=_lines_out([*range(n, 0, -1), finale])) for n in (5, 3, 1, 7, 0)]
+    task = program_task(solution, cases, starter="", examples=2, requires=_NEED_WHILE)
+    return code_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=f"The variable `{var}` is already set to a whole number (0 or more). Write a `while` loop that counts down from `{var}` to 1, one number per line, and then prints `{finale}`.",
+        task=task,
+        explanation=f"Loop while `{var} >= 1`: print it, then subtract 1. The final `print(\"{finale}\")` is not indented, so it runs once after the loop. If {var} is 0 only `{finale}` prints.",
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_validate(rng: random.Random) -> Question:
+    """Keep asking until the answer is valid (repeated input is the lesson's reason for `while`)."""
+    kind = rng.choice(["positive", "range", "teen", "yes_no"])
+    retry = rng.choice(["Try again.", "Try again.", "Not valid.", "Please retry."])
+    if kind == "positive":
+        what = "Keep asking until the number is greater than 0"
+        ok = "You entered:"
+        solution = _lines(
+            'num = int(input("Enter a positive number: "))',
+            "while num <= 0:",
+            f'    print("{retry}")',
+            '    num = int(input("Enter a positive number: "))',
+            f'print("{ok}", num)',
+        )
+        scripts = [["5"], ["-3", "0", "4"], ["0", "1"], ["-1", "-2", "-3", "9"], ["12"]]
+        ask = "a number (use `input()` and `int()`)"
+        why = "Ask once before the loop, and again inside it. Loop while the number is NOT valid (`num <= 0`)."
+    elif kind == "range":
+        low, high = rng.choice([(1, 10), (1, 5), (1, 100), (0, 3)])
+        what = f"Keep asking until the number is from {low} to {high} (including both ends)"
+        ok = "You picked"
+        solution = _lines(
+            f'num = int(input("Pick a number from {low} to {high}: "))',
+            f"while num < {low} or num > {high}:",
+            f'    print("{retry}")',
+            f'    num = int(input("Pick a number from {low} to {high}: "))',
+            f'print("{ok}", num)',
+        )
+        scripts = [[str(low + 1)], [str(low - 1), str(high + 1), str(high)], [str(low)], [str(high)], ["-4", str(high + 7), str(low)]]
+        ask = "a number (use `input()` and `int()`)"
+        why = f"The loop must continue while the number is NOT valid: below {low} OR above {high}. Use `or` (a number can't be both)."
+    elif kind == "teen":
+        what = "Keep asking until the age is from 13 to 19 (including both ends)"
+        ok = "Welcome, teen! Age:"
+        solution = _lines(
+            'age = int(input("Enter your age: "))',
+            "while age < 13 or age > 19:",
+            f'    print("{retry}")',
+            '    age = int(input("Enter your age: "))',
+            f'print("{ok}", age)',
+        )
+        scripts = [["15"], ["12", "20", "13"], ["19"], ["13"], ["5", "40", "99", "17"]]
+        ask = "an age (use `input()` and `int()`)"
+        why = "The loop continues while the age is NOT in the range: under 13 OR over 19. (`while not 13 <= age <= 19` works too.)"
+    else:
+        ok = "You said:"
+        solution = _lines(
+            'answer = input("Continue? (yes/no): ")',
+            'while answer != "yes" and answer != "no":',
+            f'    print("{retry}")',
+            '    answer = input("Continue? (yes/no): ")',
+            f'print("{ok}", answer)',
+        )
+        what = "Keep asking until the answer is exactly `yes` or `no`"
+        scripts = [["yes"], ["maybe", "no"], ["Yes", "YES", "no"], ["ok", "sure", "yes"], ["no"]]
+        ask = "a yes/no answer (use `input()` only, no `int()`)"
+        why = 'Loop while the answer is NOT yes AND NOT no: `answer != "yes" and answer != "no"`. Using `or` here would be True for every answer.'
+    cases = [Case(stdin=s, out=_lines_out([*([retry] * (len(s) - 1)), f"{ok} {s[-1]}"])) for s in scripts]
+    task = program_task(solution, cases, starter="", examples=2, requires=_NEED_WHILE)
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Write a program that asks the player for {ask}. {what}: print `{retry}` after each invalid answer. When the answer is valid, print `{ok} ` followed by the answer.",
+        task=task,
+        explanation=why,
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_count_multiples(rng: random.Random) -> Question:
+    """`while` + `if` + `%`: count (or add up) the numbers from 1 to `limit` that divide evenly."""
+    k = rng.choice([2, 3, 4, 5, 7])
+    kind = rng.choice(["count", "sum"])
+    label = rng.choice(["Multiples:", "Found:"]) if kind == "count" else rng.choice(["Total:", "Sum:"])
+    solution = _lines(
+        "count = 1",
+        "answer = 0",
+        "while count <= limit:",
+        f"    if count % {k} == 0:",
+        "        answer += 1" if kind == "count" else "        answer += count",
+        "    count += 1",
+        f'print("{label}", answer)',
+    )
+    limits = [10, 20, 1, 0, 7, 30, 14]
+    cases = [
+        Case(
+            vars={"limit": lim},
+            out=f"{label} {sum(1 for i in range(1, lim + 1) if i % k == 0) if kind == 'count' else sum(i for i in range(1, lim + 1) if i % k == 0)}",
+        )
+        for lim in limits
+    ]
+    task = program_task(solution, cases, starter="", examples=2, requires=_NEED_WHILE)
+    what = "how many of the numbers from 1 to `limit` divide evenly by" if kind == "count" else "the sum of the numbers from 1 to `limit` that divide evenly by"
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=f"The variable `limit` is already set. Use a `while` loop to find {what} {k} (remainder 0 when you use `%`), then print `{label} ` and the answer.",
+        task=task,
+        explanation=f"Loop `count` from 1 to `limit`. An `if count % {k} == 0:` inside the loop " + ("adds 1 to a counter" if kind == "count" else "adds `count` to a total") + "; the update `count += 1` stays outside the `if`.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_limited_tries(rng: random.Random) -> Question:
+    """Password with a limited number of tries: the condition combines `!=` and a tries counter with `and`."""
+    secret = rng.choice(_SECRETS)
+    k = rng.choice([3, 3, 4])
+    wrong = rng.choice(["Wrong", "Nope", "Incorrect"])
+    ok = rng.choice(["Access granted!", "Welcome!", "Unlocked!"])
+    fail = rng.choice(["Locked out!", "Too many tries!", "Game over"])
+    solution = _lines(
+        "tries = 0",
+        'guess = ""',
+        f"while guess != secret and tries < {k}:",
+        '    guess = input("Password: ")',
+        "    tries += 1",
+        "    if guess != secret:",
+        f'        print("{wrong}")',
+        "if guess == secret:",
+        f'    print("{ok}")',
+        "else:",
+        f'    print("{fail}")',
+    )
+    bad = ["cat", "123", "abc", "hello", "no"]
+    scripts = [
+        [secret],
+        ["cat", secret],
+        [*bad[: k - 1], secret],
+        bad[:k],
+        [*bad[:k], secret],
+        [secret, "cat"],
+    ]
+
+    def out(s):
+        rows = []
+        for i, g in enumerate(s[:k]):
+            if g == secret:
+                rows.append(ok)
+                return _lines_out(rows)
+            rows.append(wrong)
+        rows.append(fail)
+        return _lines_out(rows)
+
+    cases = [Case(vars={"secret": secret}, stdin=s, out=out(s)) for s in scripts]
+    task = program_task(solution, cases, starter="", examples=2, requires=_NEED_WHILE)
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=(
+            f"The variable `secret` is already set. The player gets {k} guesses (ask with `input()`). Print `{wrong}` after each wrong guess. "
+            f"If a guess is right, print `{ok}` and stop asking. If all {k} guesses are wrong, print `{fail}` as the last line."
+        ),
+        task=task,
+        explanation=f"Keep a `tries` counter. Loop while the guess is wrong AND `tries < {k}`; inside, ask, add 1 to tries and print the wrong message. After the loop, check whether the last guess was right.",
     )

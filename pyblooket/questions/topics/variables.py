@@ -60,7 +60,17 @@ def _q(difficulty, prompt, correct, distractors, explanation, rng, code=None):
     )
 
 
+_PRINT_PROMPTS = [
+    "What does this code print?",
+    "What is the output of this code?",
+    "What will this program print?",
+    "What is printed when this code runs?",
+]
+
+
 def _out(difficulty, code, distractors, explanation, rng, prompt="What does this code print?", allow_error=False):
+    if prompt == "What does this code print?":
+        prompt = rng.choice(_PRINT_PROMPTS)
     return output_question(
         topic=TOPIC,
         difficulty=difficulty,
@@ -110,16 +120,48 @@ def _styles(words: list[str]) -> dict[str, str]:
     }
 
 
-NAME_PAIRS = [
-    "student_count", "high_score", "player_name", "total_points", "year_started", "lives_left", "first_name", "best_time",
-    "coin_count", "game_level", "last_score", "money_left", "game_speed", "top_score", "time_left", "player_score",
-    "class_size", "start_year", "last_name", "final_score",
-]
+# Variable names (two words) together with values that make sense for them.
+NAME_VALUES = {
+    "student_count": ["24", "30", "18", "28"],
+    "high_score": ["980", "1500", "75", "430"],
+    "player_name": ['"Ada"', '"Sam"', '"Reid"', '"Zoe"'],
+    "total_points": ["120", "45", "310", "88"],
+    "year_started": ["2023", "2021", "2019", "2022"],
+    "lives_left": ["3", "2", "1", "5"],
+    "first_name": ['"Ada"', '"Ben"', '"Cara"', '"Dev"'],
+    "best_time": ["12.5", "9.8", "31.2", "20.4"],
+    "coin_count": ["25", "60", "8", "140"],
+    "game_level": ["4", "7", "2", "10"],
+    "last_score": ["88", "92", "67", "75"],
+    "money_left": ["50", "12", "90", "35"],
+    "game_speed": ["2.5", "1.5", "3", "4"],
+    "top_score": ["990", "700", "850", "415"],
+    "time_left": ["30", "45", "12", "60"],
+    "player_score": ["35", "80", "52", "19"],
+    "class_size": ["24", "32", "28", "21"],
+    "start_year": ["2022", "2020", "2018", "2024"],
+    "last_name": ['"Lovelace"', '"Smith"', '"Reed"', '"Lee"'],
+    "final_score": ["95", "71", "84", "60"],
+}
+NAME_PAIRS = list(NAME_VALUES)
+_TEXT_NAMES = {"player_name", "first_name", "last_name"}
 
 
 def _pick_words(rng: random.Random) -> list[str]:
     """Two sensible words for a variable name, e.g. ['high', 'score']."""
     return rng.choice(NAME_PAIRS).split("_")
+
+
+def _pick_name_value(rng: random.Random, numeric_only: bool = False) -> tuple[list[str], str]:
+    """(words, value literal) such as (['high', 'score'], '980') -- the value fits the name."""
+    pool = [n for n in NAME_PAIRS if not (numeric_only and n in _TEXT_NAMES)]
+    name = rng.choice(pool)
+    return name.split("_"), rng.choice(NAME_VALUES[name])
+
+
+def _article(word: str) -> str:
+    """'an int', 'a str', 'a float', 'a bool'."""
+    return ("an " if word.strip("`")[:1] in ("a", "e", "i", "o", "u") else "a ") + word
 
 
 # ==========================================================================
@@ -196,21 +238,37 @@ def gen_variable_basics(rng: random.Random) -> Question:
 
 @generator(TOPIC, EASY)
 def gen_valid_name(rng: random.Random) -> Question:
-    """'Which of these is a valid variable name?'"""
-    valid = rng.choice(
-        ["student_count", "high_score", "player1", "level_2", "gpa", "height_m", "is_student", "total_points",
-         "my_variable", "age2", "year_started", "best_time", "x1"]
-    )
+    """'Which of these is a valid variable name?'  (or: which one is NOT allowed?)"""
+    valid_pool = [
+        "student_count", "high_score", "player1", "level_2", "gpa", "height_m", "is_student", "total_points",
+        "my_variable", "age2", "year_started", "best_time", "x1", "STUDENT_LIMIT", "MAX_USERS", "first_name",
+    ]
     digit_first = rng.choice(["1st_place", "2player", "3d_model", "9lives", "4th_try", "2nd_score"])
     hyphen_space = rng.choice(["high-score", "my-name", "is-student", "student count", "high score", "my name", "best-time"])
     symbol = rng.choice(["score$", "my@name", "gpa!", "total%", "name#", "level+1"])
+    why = (
+        "Names can contain letters, numbers, and underscores, but they cannot start with a number. "
+        "Hyphens, spaces and symbols are not allowed."
+    )
+    if not all(n.isidentifier() for n in valid_pool) or any(n.isidentifier() for n in (digit_first, hyphen_space, symbol)):
+        raise GenerationError("name lists are wrong")
+    if rng.random() < 0.65:
+        valid = rng.choice(valid_pool)
+        return _q(
+            EASY,
+            rng.choice(["Which of these is a valid variable name in Python?", "Which variable name is allowed in Python?"]),
+            valid,
+            [digit_first, hyphen_space, symbol],
+            why,
+            rng,
+        )
+    invalid = rng.choice([digit_first, hyphen_space, symbol])
     return _q(
         EASY,
-        rng.choice(["Which of these is a valid variable name in Python?", "Which variable name is allowed in Python?"]),
-        valid,
-        [digit_first, hyphen_space, symbol],
-        "Names can contain letters, numbers, and underscores, but they cannot start with a number. "
-        "Hyphens, spaces and symbols are not allowed.",
+        rng.choice(["Which of these is NOT a valid variable name in Python?", "Which variable name is NOT allowed in Python?"]),
+        invalid,
+        rng.sample(valid_pool, 3),
+        why,
         rng,
     )
 
@@ -229,7 +287,7 @@ def gen_snake_case_name(rng: random.Random) -> Question:
         s["snake"],
         [s["camel"], s["pascal"], s["kebab"]],
         f"snake_case means lowercase words joined with underscores: `{s['snake']}`. "
-        f"`{s['camel']}` is camelCase, which is the style the lesson warns about.",
+        f"`{s['camel']}` is camelCase, which is not the style this course uses.",
         rng,
     )
 
@@ -312,7 +370,7 @@ def gen_type_of_value(rng: random.Random) -> Question:
         EASY,
         code,
         [*others, t, "<class 'type'>"],
-        f"`type({var})` shows the data type of the value stored in `{var}`: `{lit}` is a `{t}`.",
+        f"`type({var})` shows the data type of the value stored in `{var}`: `{lit}` is {_article('`' + t + '`')}.",
         rng,
     )
 
@@ -639,6 +697,46 @@ def gen_dynamic_typing_concept(rng: random.Random) -> Question:
     )
 
 
+@generator(TOPIC, EASY)
+def gen_fstring_concept(rng: random.Random) -> Question:
+    """Pro Tip: prefer f-strings -- what the f and the {} do."""
+    var, other = rng.choice([("name", "age"), ("name", "score"), ("school", "year_started"), ("player", "level")])
+    items = [
+        (
+            f"What does the letter `f` in front of the opening quote do in `print(f\"{{{var}}} is {{{other}}}\")`?",
+            "It tells Python to fill in the {} placeholders with values",
+            ["It turns the text into a float", "It tells Python the text is a file name", "It makes the variables constants",
+             "It prints the text twice"],
+        ),
+        (
+            "What goes inside the curly braces `{}` of an f-string?",
+            "The name of a variable (or a value) to fill in",
+            ["A comment about the text", "The type of the text", "The quotes for the text", "The file name"],
+        ),
+        (
+            "Why does the lesson recommend f-strings for output?",
+            "They are easy to read and need no str() for numbers",
+            ["They are the only way to print a number", "They stop a variable from changing", "They make the variable a constant",
+             "They make Python run the code twice as fast"],
+        ),
+        (
+            f"Which statement about `f\"{{{var}}} is {{{other}}}\"` is true?",
+            "It mixes text and values without using + or str()",
+            [f"It needs a comma after every {{}}", "It only works when every value is text", "It prints the braces and the names exactly as typed",
+             f"It changes the type of {var}"],
+        ),
+    ]
+    prompt, correct, wrong = rng.choice(items)
+    return _q(
+        EASY,
+        prompt,
+        correct,
+        rng.sample(wrong, 3),
+        'The lesson calls f-strings "modern & clean": put an `f` before the opening quote and write variable names inside `{}`, and Python fills in their values.',
+        rng,
+    )
+
+
 # ==========================================================================
 # MEDIUM  (choice)
 # ==========================================================================
@@ -676,7 +774,7 @@ def gen_reassign_type_trace(rng: random.Random) -> Question:
         MEDIUM,
         code,
         wrong,
-        f"Reassignment replaces the old value, and the type changes with it: `{var}` now holds `{v2}`, a `{t2}`.",
+        f"Reassignment replaces the old value, and the type changes with it: `{var}` now holds `{v2}`, which is {_article('`' + t2 + '`')}.",
         rng,
     )
 
@@ -895,10 +993,9 @@ def gen_fix_concat_line(rng: random.Random) -> Question:
 @generator(TOPIC, MEDIUM)
 def gen_typo_name_error(rng: random.Random) -> Question:
     """Common mistake: studentCount vs student_count (names must match exactly)."""
-    words = _pick_words(rng)
+    words, value = _pick_name_value(rng)
     s = _styles(words)
     var = s["snake"]
-    value = rng.choice(["24", "980", "2023", '"Ada"', "12.5", "30"])
     kind = rng.choice(["camel", "pascal", "case"])
     typo = {"camel": s["camel"], "pascal": s["pascal"], "case": var.upper()}[kind]
     code = f"{var} = {value}\nprint({typo})"
@@ -1009,7 +1106,7 @@ def gen_constant_concept(rng: random.Random) -> Question:
         return _q(
             MEDIUM,
             f"Which statement about a constant such as `{const}` is true?",
-            "The capital letters only signal: do not change this",
+            "It is a convention that tells programmers not to change it",
             [
                 "Python raises an error if you assign to it again",
                 "It can only hold a number",
@@ -1044,7 +1141,7 @@ def gen_type_gotchas(rng: random.Random) -> Question:
     elif t == "float":
         why = f"A number with a decimal point is a float, even when it ends in `.0`: `{lit}` is a `float`."
     else:
-        why = f"`{lit}` is a `{t}`."
+        why = f"`{lit}` is {_article('`' + t + '`')}."
     return _out(MEDIUM, code, [*others, "<class 'type'>"], why, rng)
 
 
@@ -1101,6 +1198,32 @@ def gen_multi_assign_trace(rng: random.Random) -> Question:
         "Follow the lines from top to bottom. `x = y` copies the value on the right into the name on the left, and only that name changes.",
         rng,
     )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_string_plus_number(rng: random.Random) -> Question:
+    """Common mistake from the lesson: "5" + 2 (text + number) -- and its cousins."""
+    a, b = rng.sample(range(2, 10), 2)
+    shape = rng.choice(["str_int", "int_str", "str_str", "int_int"])
+    code = {
+        "str_int": f'print("{a}" + {b})',
+        "int_str": f'print({a} + "{b}")',
+        "str_str": f'print("{a}" + "{b}")',
+        "int_int": f"print({a} + {b})",
+    }[shape]
+    why = {
+        "str_int": f'`"{a}"` is text and `{b}` is a number. Python will not mix them with `+`, so you get a TypeError. Cast first, e.g. `int("{a}") + {b}`.',
+        "int_str": f'`{a}` is a number and `"{b}"` is text. Python will not mix them with `+`, so you get a TypeError.',
+        "str_str": f'Both pieces are text, so `+` glues them together: `{a}{b}`, not {a + b}.',
+        "int_int": f"Both pieces are numbers, so `+` adds them: {a + b}.",
+    }[shape]
+    if shape in ("str_int", "int_str"):
+        wrong = [str(a + b), f"{a}{b}", error_choice("NameError")]
+    elif shape == "str_str":
+        wrong = [str(a + b), f"{a} {b}", error_choice("TypeError")]
+    else:
+        wrong = [f"{a}{b}", f"{a} {b}", error_choice("TypeError")]
+    return _out(MEDIUM, code, wrong, why, rng, prompt="What is printed, or which error is raised?", allow_error=True)
 
 
 # ==========================================================================
@@ -1355,6 +1478,72 @@ def gen_value_snapshot(rng: random.Random) -> Question:
     )
 
 
+@generator(TOPIC, HARD)
+def gen_count_variables(rng: random.Random) -> Question:
+    """How many different variables does this program create?  (case-sensitive names + reassignment)"""
+    word = rng.choice(["score", "money", "count", "level", "points", "total"])
+    forms = [word, word.title(), word.upper()]
+    k = rng.choice([2, 2, 3])
+    chosen = forms[:k] if rng.random() < 0.5 else rng.sample(forms, k)
+    n_lines = rng.choice([5, 6])
+    names = list(chosen) + [rng.choice(chosen) for _ in range(n_lines - k)]
+    rng.shuffle(names)
+    # every chosen spelling must really appear
+    if set(names) != set(chosen):
+        raise GenerationError("a spelling is missing")
+    vals = rng.sample(range(2, 60), n_lines)
+    code = "\n".join(f"{n} = {v}" for n, v in zip(names, vals))
+    res = run_code(code)
+    if res.error:
+        raise GenerationError("snippet failed")
+    count = len(set(names))
+    wrong = [str(n_lines), str(count + 1), str(count - 1), "1", str(n_lines - 1)]
+    return _q(
+        HARD,
+        "How many different variables does this program create?",
+        str(count),
+        wrong,
+        f"Names are case-sensitive, so each different spelling is its own variable ({', '.join('`' + n + '`' for n in sorted(set(names)))}). "
+        "Assigning to a name that already exists is reassignment, not a new variable.",
+        rng,
+        code=code,
+    )
+
+
+@generator(TOPIC, HARD)
+def gen_copy_types(rng: random.Random) -> Question:
+    """Copying a value copies its type too; reassigning one name does not touch the other."""
+    (n1, l1), (n2, l2) = rng.choice(
+        [
+            (("age", "17"), ("word", '"seventeen"')),
+            (("score", "10"), ("label", '"ten"')),
+            (("gpa", "3.5"), ("grade", '"A"')),
+            (("level", "4"), ("title", '"four"')),
+            (("money", "12.5"), ("price", "20")),
+            (("is_student", "True"), ("answer", '"yes"')),
+            (("count", "3"), ("height_m", "1.80")),
+        ]
+    )
+    if rng.random() < 0.5:
+        code = f"{n1} = {l1}\n{n2} = {l2}\ncopy = {n1}\n{n1} = {n2}\nprint(type({n1}), type(copy))"
+        why = (
+            f"`copy = {n1}` stores the first value ({_article('`' + type(eval(l1)).__name__ + '`')}). Then `{n1} = {n2}` gives `{n1}` the second value "
+            f"({_article('`' + type(eval(l2)).__name__ + '`')}), but `copy` keeps what it was given."
+        )
+    else:
+        code = f"{n1} = {l1}\nbackup = {n1}\n{n1} = {l2}\nprint(type({n1}), type(backup))"
+        why = (
+            f"`backup = {n1}` stores the first value ({_article('`' + type(eval(l1)).__name__ + '`')}). Reassigning `{n1}` to `{l2}` changes only `{n1}`, "
+            f"so `backup` keeps its old value and type."
+        )
+    t1, t2 = type(eval(l1)).__name__, type(eval(l2)).__name__
+    if t1 == t2:
+        raise GenerationError("types must differ")
+    combos = [f"<class '{p}'> <class '{q}'>" for p in (t1, t2) for q in (t1, t2)]
+    correct = f"<class '{t2}'> <class '{t1}'>"
+    return _out(HARD, code, [c for c in combos if c != correct], why, rng)
+
+
 # ==========================================================================
 # BLANKS  (fill in the blanks, typed)
 # ==========================================================================
@@ -1388,7 +1577,7 @@ def gen_blanks_value_literal(rng: random.Random) -> Question:
         return blanks_question(
             topic=TOPIC,
             difficulty=EASY,
-            prompt=f"Fill in the blank so the code prints `{value}`.",
+            prompt=f"Fill in the blank so `{var}` holds the boolean `{value}` (type it exactly) and the code prints it.",
             template=f"{var} = {mark}\nprint({var})",
             blanks=[Blank([value], hint="boolean")],
             explanation=f"Python's booleans are written `True` and `False` with a capital first letter (names are case-sensitive), so `{var} = {value}`.",
@@ -1400,7 +1589,7 @@ def gen_blanks_value_literal(rng: random.Random) -> Question:
     return blanks_question(
         topic=TOPIC,
         difficulty=EASY,
-        prompt=f"Fill in the blank so the code prints `{shown}`.",
+        prompt=f"Fill in the blank so `{var}` holds the {'decimal' if '.' in lit else 'whole'} number {shown} and the code prints it.",
         template=f"{var} = {mark}\nprint({var})",
         blanks=[Blank(accepted, hint="number", mode="expr")],
         explanation=f"Numbers are typed without quotes: `{var} = {lit}`.",
@@ -1486,10 +1675,12 @@ def gen_blanks_multi_assign(rng: random.Random) -> Question:
             blanks.append(Blank([lit] if shown == lit else [lit, shown], hint="number", mode="expr"))
     expected = " ".join(_shown(lit) for lit in lits)
     template = f"{', '.join(names)} = {', '.join(blank_mark(i + 1) for i in range(len(lits)))}\nprint({', '.join(names)})"
+    kinds = [("the text " + lit.strip('"')) if lit.startswith('"') else f"the {'decimal' if '.' in lit else 'whole'} number {lit}" for lit in lits]
+    what = "; ".join(f"`{n}` is {k}" for n, k in zip(names, kinds))
     return blanks_question(
         topic=TOPIC,
         difficulty=EASY,
-        prompt=f"Multiple assignment: fill in the blanks so the code prints `{expected}`.",
+        prompt=f"Multiple assignment: fill in the blanks so that {what}, and the code prints `{expected}`.",
         template=template,
         blanks=blanks,
         explanation="Multiple assignment matches names and values by position, and `print` shows text without its quotes."
@@ -1550,7 +1741,7 @@ def gen_blanks_str_cast(rng: random.Random) -> Question:
         prompt = f"Fill in the blank so the number can be joined to the text with `+`. The code should print `{label}: {value}`."
     else:
         template = f'{var} = {value}\nprint("{label}: " + {mark})'
-        blanks = [Blank([f"str({var})"], hint="expression", mode="expr")]
+        blanks = [Blank([f"str({var})", f'f"{{{var}}}"'], hint="expression", mode="expr")]
         prompt = f"Fill in the blank with an expression that turns `{var}` into text. The code should print `{label}: {value}`."
     return blanks_question(
         topic=TOPIC,
@@ -1590,12 +1781,14 @@ def gen_blanks_profile_line(rng: random.Random) -> Question:
     sentence = f"{person} started at {school} in {year} and has a GPA of {gpa}"
     shape = rng.choice(["year", "school"])
     if shape == "year":
+        blank_hint = "`year_started` is a whole number"
         template = (
             f'school = "{school}"\nyear_started = {blank_mark(1)}\ngpa = {gpa}\n'
             f'print({blank_mark(2)}"{person} started at {{school}} in {{{blank_mark(3)}}} and has a GPA of {{gpa}}")'
         )
         blanks = [Blank([str(year)], hint="number", mode="expr"), Blank(["f", "F"], hint="letter"), Blank(["year_started"], hint="variable")]
     else:
+        blank_hint = "`school` is text"
         template = (
             f'school = {blank_mark(1)}\nyear_started = {year}\ngpa = {gpa}\n'
             f'print({blank_mark(2)}"{person} started at {{school}} in {{year_started}} and has a GPA of {{{blank_mark(3)}}}")'
@@ -1604,7 +1797,7 @@ def gen_blanks_profile_line(rng: random.Random) -> Question:
     return blanks_question(
         topic=TOPIC,
         difficulty=HARD,
-        prompt=f"Mini-Challenge: Profile Line. Fill in the blanks so the code prints `{sentence}`",
+        prompt=f"Mini-Challenge: Profile Line. Fill in the blanks so the code prints `{sentence}` ({blank_hint}).",
         template=template,
         blanks=blanks,
         explanation="Three variables hold the facts, and an f-string (an `f` before the quotes, variable names in `{}`) builds the sentence. Text values need quotes; numbers do not.",
@@ -1628,6 +1821,50 @@ def gen_blanks_rotate(rng: random.Random) -> Question:
         blanks=[Blank([n], hint="variable") for n in answers],
         explanation=f"The right side uses the old values, so `{a}, {b}, {c} = {', '.join(answers)}` moves each value one place. `{a}` must receive the old `{answers[0]}`, `{b}` the old `{answers[1]}`, and `{c}` the old `{answers[2]}`.",
         expect_output=expected,
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="blanks")
+def gen_blanks_safe_print(rng: random.Random) -> Question:
+    """The bank question: 'To concatenate text and a number safely: ___   Using modern formatting: ___'."""
+    var, value, label = rng.choice(
+        [("age", 17, "Age"), ("score", 95, "Score"), ("level", 4, "Level"), ("money", 50, "Money"), ("year_started", 2023, "Year"), ("lives", 3, "Lives")]
+    )
+    value = rng.choice([value, value + 1, value + 2, value + 5]) if var != "year_started" else rng.choice([2019, 2020, 2021, 2022, 2023])
+    template = f'{var} = {value}\nprint("{label}: " + {blank_mark(1)})\nprint({blank_mark(2)}"{label}: {{{var}}}")'
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Both lines should print `{label}: {value}`. First join text and a number safely with `+`, then use modern formatting.",
+        template=template,
+        blanks=[Blank([f"str({var})"], hint="expression", mode="expr"), Blank(["f", "F"], hint="letter")],
+        explanation=f'`+` only joins text to text, so the number must become text first: `str({var})`. The modern way is an f-string: put an `f` before the quotes and write `{{{var}}}` inside.',
+        expect_output=f"{label}: {value}\n{label}: {value}",
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="blanks")
+def gen_blanks_plus_space(rng: random.Random) -> Question:
+    """Commas add the space for you; with + you type it yourself."""
+    var, label, pool = rng.choice(
+        [
+            ("name", "Hello,", PEOPLE),
+            ("name", "My name is", PEOPLE),
+            ("name", "Welcome,", PEOPLE),
+            ("school", "I go to", SCHOOLS),
+            ("pet", "My pet is", ["Rex", "Milo", "Luna", "Coco", "Max"]),
+        ]
+    )
+    value = rng.choice(pool)
+    template = f'{var} = "{value}"\nprint("{label}", {var})\nprint("{label}" + {blank_mark(1)} + {var})'
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Fill in the blank so both lines print `{label} {value}`. (The comma adds the space for you; `+` does not.)",
+        template=template,
+        blanks=[Blank(['" "', "' '"], hint="a space in quotes", mode="expr")],
+        explanation='With commas, `print` puts a space between the pieces. With `+` you have to supply the space yourself: a text piece that is just a space, `" "`.',
+        expect_output=f"{label} {value}\n{label} {value}",
     )
 
 
@@ -1706,7 +1943,7 @@ def gen_match_name_styles(rng: random.Random) -> Question:
         difficulty=EASY,
         prompt="Match each name to the convention it follows.",
         pairs=unique,
-        explanation="Variables use snake_case (lowercase with underscores), constants use SCREAMING_SNAKE_CASE (all capitals with underscores), and camelCase is the style the lesson warns about.",
+        explanation="Variables use snake_case (lowercase with underscores), constants use SCREAMING_SNAKE_CASE (all capitals with underscores), and camelCase is not the style this course uses.",
         rng=rng,
         extra_options=(snake_opt, const_opt, camel_opt),
     )
@@ -1845,6 +2082,73 @@ def gen_match_final_values(rng: random.Random) -> Question:
         rng=rng,
         extra_options=tuple(extra[:2]),
         code=code,
+    )
+
+
+@generator(TOPIC, EASY, qtype="match")
+def gen_match_statements(rng: random.Random) -> Question:
+    """Match each line from the lab to what it does."""
+    v, w = rng.sample(["score", "level", "count", "money", "lives", "points"], 2)
+    const = rng.choice(["MAX_USERS", "STUDENT_LIMIT", "MAX_LIVES", "TIME_LIMIT"])
+    n = rng.randint(2, 9)
+    pool = [
+        (f"{v} = {n}", f"Stores {n} in the variable {v}"),
+        (f"{v}, {w} = 1, 2", "Creates two variables in one line"),
+        (f"{v}, {w} = {w}, {v}", f"Swaps the values of {v} and {w}"),
+        (f"print(type({v}))", f"Shows the data type of {v}"),
+        (f"{const} = 32", "Creates a constant (by convention)"),
+        (f'print(f"{{{v}}}")', f"Prints {v} using an f-string"),
+        (f"{v} = {v} + 1", f"Reassigns {v} using its old value"),
+        (f'print("Hi", {v})', f"Prints Hi, a space, then the value of {v}"),
+    ]
+    pairs = rng.sample(pool, 5)
+    return match_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt="Match each line of code to what it does.",
+        pairs=pairs,
+        explanation="`=` stores a value; `a, b = b, a` swaps; `type()` shows a type; SCREAMING_SNAKE_CASE marks a constant; `f\"...{x}...\"` is an f-string; `print` with commas adds spaces.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="match")
+def gen_match_fixes(rng: random.Random) -> Question:
+    """Match each buggy line (the lesson's Common Mistakes) to the line that fixes it."""
+    person = rng.choice(PEOPLE)
+    school = rng.choice(SCHOOLS)
+    setup = "student_count = 24\nscore = 10\nage = 17"
+    pool = [
+        ("quotes", f"name = {person}", f'name = "{person}"'),
+        ("quotes", f"school = {school}", f'school = "{school}"'),
+        ("cast", 'print("Age: " + age)', 'print("Age: " + str(age))'),
+        ("cast", 'print("Score: " + score)', 'print("Score: " + str(score))'),
+        ("typo", "print(studentCount)", "print(student_count)"),
+        ("typo", "print(Score)", "print(score)"),
+        ("bool", "is_student = true", "is_student = True"),
+        ("hyphen", 'my-name = "Ada"', 'my_name = "Ada"'),
+    ]
+    chosen = rng.sample(pool, 5)
+    for _ in range(40):  # want at least three different kinds of mistake among the five lines
+        if len({k for k, _, _ in chosen}) >= 3:
+            break
+        chosen = rng.sample(pool, 5)
+    else:
+        raise GenerationError("mistakes too alike")
+    pairs = [(bad, fix) for _, bad, fix in chosen]
+    for bad, fix in pairs:
+        if not run_code(f"{setup}\n{bad}").error:
+            raise GenerationError(f"buggy line does not fail: {bad}")
+        if run_code(f"{setup}\n{fix}").error:
+            raise GenerationError(f"fix fails: {fix}")
+    return match_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt="Match each buggy line to the line that fixes it.",
+        pairs=pairs,
+        explanation="Text needs quotes, a number must become text (`str()`) before `+`, names must match exactly (snake_case, same capitals), `True` has a capital T, and hyphens are not allowed in names.",
+        rng=rng,
+        code=setup,
     )
 
 
@@ -2093,8 +2397,8 @@ def gen_code_reassign_type(rng: random.Random) -> Question:
         topic=TOPIC,
         difficulty=MEDIUM,
         prompt=f"`{var}` already holds a value. Reassign it to `{newlit}`, then print `{line}` (use `type()` for the last part).",
-        task=program_task(solution, cases, starter="", examples=2),
-        explanation=f"Reassignment replaces the value and the type: `{var} = {newlit}` makes it a `{type(newval).__name__}`. `print(\"{var} is now:\", {var}, type({var}))` shows both.",
+        task=program_task(solution, cases, starter="", examples=2, requires=[(r"\btype\s*\(", "Use type() to print the type, don't type it yourself")]),
+        explanation=f"Reassignment replaces the value and the type: `{var} = {newlit}` makes it {_article('`' + type(newval).__name__ + '`')}. `print(\"{var} is now:\", {var}, type({var}))` shows both.",
     )
 
 
@@ -2153,10 +2457,10 @@ def gen_code_fix_bug(rng: random.Random) -> Question:
         prompt = f"`{var}` holds a number (for example `{var} = {vals[0]}`), so this line crashes. Fix it so it prints `{label}: {vals[0]}`."
         why = f"A string and a number cannot be added with `+`. Use `str({var})`, a comma, or an f-string."
     elif kind == "typo":
-        words = rng.choice(NAME_PAIRS).split("_")
+        words, _ = _pick_name_value(rng, numeric_only=True)
         s = _styles(words)
-        label = words[0].title()
-        vals = rng.sample(range(2, 99), 4)
+        label = " ".join(words).capitalize()
+        vals = rng.sample(range(2019, 2025), 4) if "year" in words else rng.sample(range(2, 99), 4)
         typo = s["camel"]
         starter = f'print("{label}:", {typo})'
         solution = f'print("{label}:", {s["snake"]})'
@@ -2289,4 +2593,62 @@ def gen_code_swap_types(rng: random.Random) -> Question:
         prompt=f"`{x}` and `{y}` already hold values of different types. Swap them, then print the type of `{x}` on one line and the type of `{y}` on the next.",
         task=program_task(solution, cases, starter="", examples=2),
         explanation=f"Swapping moves the value and its type together: `{x}, {y} = {y}, {x}`. Then `print(type({x}))` and `print(type({y}))` show the new types (dynamic typing).",
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_save_old_value(rng: random.Random) -> Question:
+    """Copy a value into another variable before changing the original."""
+    var, old = rng.choice(
+        [("score", "old_score"), ("money", "old_money"), ("level", "old_level"), ("lives", "old_lives"), ("points", "old_points"), ("coins", "old_coins")]
+    )
+    delta = rng.choice([5, 10, 15, 20, 25])
+    starts = rng.sample(range(3, 60), 4)
+    solution = f"{old} = {var}\n{var} = {var} + {delta}\nprint({old}, {var})"
+    cases = [Case(vars={var: s}, expect_vars={old: s, var: s + delta}, out=f"{s} {s + delta}") for s in starts]
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=(
+            f"`{var}` already holds a number. Save its current value in a new variable `{old}`, then add {delta} to `{var}`, "
+            f"and print `{old}` and `{var}` on one line, like `{starts[0]} {starts[0] + delta}`."
+        ),
+        task=program_task(solution, cases, starter="", examples=2),
+        explanation=f"Copy first: `{old} = {var}` keeps the old value safe. Then `{var} = {var} + {delta}` changes only `{var}`. If you changed `{var}` first, the old value would be lost.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_type_journey(rng: random.Random) -> Question:
+    """Dynamic typing: one variable, three different types -- print its type each time."""
+    var = rng.choice(["item", "data", "value", "entry", "thing"])
+    pools = {
+        "int": ["7", "12", "42", "3"],
+        "str": ['"seven"', '"hello"', '"Ada"', '"blue"'],
+        "float": ["7.5", "2.5", "1.25", "3.9"],
+        "bool": ["True", "False"],
+    }
+    kinds = rng.sample(list(pools), 3)
+    lits = [rng.choice(pools[k]) for k in kinds]
+    lines = []
+    for lit in lits:
+        lines += [f"{var} = {lit}", f"print(type({var}))"]
+    solution = "\n".join(lines)
+    types_out = "\n".join(f"<class '{k}'>" for k in kinds)
+    last = eval(lits[-1])
+    cases = [
+        Case(label="run the program", out=types_out, expect_vars={var: last}),
+        Case(label=f"print({var}) afterwards", after=f"print({var})", out=f"{types_out}\n{last}"),
+    ]
+    desc = {"int": "a whole number", "str": "text", "float": "a decimal number", "bool": "a boolean"}
+    first, second, third = (f"{desc[k]} (`{lit}`)" for k, lit in zip(kinds, lits))
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=(
+            f"Create a variable `{var}` holding {first} and print its type. Then reassign `{var}` to {second} and print its type again. "
+            f"Finally reassign it to {third} and print its type a third time. Each type goes on its own line."
+        ),
+        task=program_task(solution, cases, starter="", examples=1, requires=[(r"\btype\s*\(", "Use type() to print each type, don't type it yourself")]),
+        explanation=f"Python is dynamically typed: the same name `{var}` can hold a new type each time you assign. Use `print(type({var}))` after each assignment to see it change.",
     )

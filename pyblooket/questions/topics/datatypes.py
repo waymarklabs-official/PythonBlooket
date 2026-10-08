@@ -73,6 +73,11 @@ def cls(name: str) -> str:
     return f"<class '{name}'>"
 
 
+def a_an(type_name_: str) -> str:
+    """'a' or 'an' in front of a type name: an int, a float, a str, a list, an NoneType..."""
+    return "an" if type_name_[:1] in "aeiou" else "a"
+
+
 def lit(value) -> str:
     """Python source for a value, in the lesson's style (double-quoted strings)."""
     if isinstance(value, str):
@@ -178,6 +183,28 @@ def me_dict(rng: random.Random, n_classes: int | None = None) -> dict:
     """The Mini-Challenge `me` dictionary: name, grade and a list of class names."""
     n = n_classes if n_classes is not None else rng.choice([3, 3, 4, 5])
     return {"name": rng.choice(PEOPLE), "grade": rng.choice([9, 10, 11, 12]), "classes": rng.sample(SUBJECTS, n)}
+
+
+def me_src(me: dict, name: str = "me") -> str:
+    """`me = {...}` on one line when it fits, else one key per line (the classes list can get long)."""
+    inline = f"{name} = {lit(me)}"
+    if len(inline) <= 72:
+        return inline
+    return (
+        f"{name} = {{\n"
+        f'    "name": {lit(me["name"])},\n'
+        f'    "grade": {lit(me["grade"])},\n'
+        f'    "classes": {lit(me["classes"])},\n'
+        "}"
+    )
+
+
+def pick_slice_end(title: str, rng: random.Random) -> int:
+    """k for `title[0:k]` such that neither the slice, nor the nearby wrong slices, end in a space."""
+    ks = [k for k in (3, 4, 5, 6) if k < len(title) and not any(title[: k + d].endswith(" ") for d in (-1, 0)) and not title[1:k].endswith(" ")]
+    if not ks:
+        raise GenerationError("no good slice length")
+    return rng.choice(ks)
 
 
 def item_list(rng: random.Random, n: int | None = None) -> tuple[str, list[str]]:
@@ -357,6 +384,8 @@ VOCAB = [
      "A negative index counts from the end, so `fruits[-1]` is the last item."),
     ("What does it mean that a list is \"mutable\"?", "It can be changed after it is created", ["It can never be changed", "It can only hold text", "It has no value"],
      "Lists are changeable: you can add, remove or replace items. Tuples are the unchangeable ones."),
+    ("Why do data types matter in Python?", "They decide what you can do with a value", ["They decide what color the output is", "They only matter for numbers", "They make the code run twice"],
+     "A data type determines what you can do with a value: you can add numbers, slice a string, or loop over a list. Use `type(value)` to see it."),
     ("What does the `j` in `2 + 3j` tell Python?", "The number is a complex number", ["The number is a float", "The number is negative", "The number is text"],
      "A number with a `j` part, like `2 + 3j`, has the type `complex`."),
 ]
@@ -409,6 +438,12 @@ TRUE_STATEMENTS = [
     ("Which statement about the `input()` function is true?", "It always returns a str.",
      ["It returns an int when you type digits.", "It returns a float when possible.", "It returns None unless you cast it."],
      "`input()` gives back text, so cast it with `int()` or `float()` when you need math."),
+    ("Which statement about printing a set is true?", "The items can print in a different order than typed.",
+     ["The items always print in the order you typed them.", "The items always print in alphabetical order.", "The items always print from shortest to longest."],
+     "Sets are unordered, so don't expect a consistent printed order."),
+    ("If `backup = scores` and `scores` is a list, which statement is true?", "Both names refer to the same list.",
+     ["`backup` is a separate copy of the list.", "`scores` is emptied.", "`backup` becomes a tuple."],
+     "Lists are mutable: changing the list through one name changes what the other name shows, because it is the same list."),
 ]
 
 
@@ -616,7 +651,10 @@ def gen_lab_scalars_trace(rng: random.Random) -> Question:
             wrong.append(f"{printed} <class 'None'>")
         wrong += [f"{printed} {cls(c)}" for c in CONFUSE[t]]
         lines.append((right, wrong))
-    explanation = "Each `print(x, type(x))` shows the value, then its type. " + " ".join(notes[:1] or ["Remember: `42` is an `int`, `3.14159` is a `float`, and `True`/`False` are `bool`."])
+    facts = []
+    for t, v, s in specs:
+        facts.append("`None` has the type `NoneType`" if t == "NoneType" else f"`{s}` is {a_an(t)} `{t}`")
+    explanation = "`print(x, type(x))` shows the value, then its type: " + " and ".join(facts) + "." + (" " + notes[0] if notes else "")
     return trace_question(MEDIUM, code, lines, rng, explanation.strip())
 
 
@@ -627,7 +665,7 @@ TITLES = ["Intro to Python", "Data Types Lab", "Hello World", "Python Rocks", "C
 def gen_lab_string_trace(rng: random.Random) -> Question:
     """The lab's String block: len, upper and a slice."""
     title = rng.choice(TITLES)
-    k = rng.choice([3, 4, 5, 6])
+    k = pick_slice_end(title, rng)
     code = (
         f"title = {lit(title)}\n"
         'print("Length:", len(title))\n'
@@ -674,7 +712,8 @@ def gen_lab_list_trace(rng: random.Random) -> Question:
     front = [repr([new] + items), f"{word} {single}: {([new] + items)[idx]}", str(n)]
     return trace_question(
         MEDIUM, code, lines, rng,
-        f"`append` adds {lit(new)} to the end, so the list now has {n} items. Index `0` is still the first item and `-1` is the new last item.",
+        f"`append` adds {lit(new)} to the end, so the list now has {n} items. "
+        + ("Index `0` is still the first item." if idx == 0 else "Index `-1` is the last item, which is now the new one."),
         first=["\n".join(forgot), "\n".join(front)],
     )
 
@@ -688,46 +727,57 @@ def gen_lab_dict_trace(rng: random.Random) -> Question:
             'print("student name:", student["name"])',
             f"student name: {d['name']}",
             [f"student name: {d['grade']}", "student name: name"],
+            'Use the key in quotes to look a value up: `student["name"]`.',
         ),
         (
             'print(student["grade"] + 1)',
             str(d["grade"] + 1),
             [f"{d['grade']}1", str(d["grade"])],
+            '`student["grade"]` is a number, so `+ 1` is real addition.',
         ),
         (
             'print(type(student["gpa"]))',
             cls("float"),
             [cls("str"), cls("int")],
+            '`student["gpa"]` is `' + str(d["gpa"]) + "`, a `float`.",
         ),
         (
             "print(len(student))",
             "3",
             ["2", "4"],
+            "`len(student)` counts the keys: name, grade and gpa.",
         ),
     ]
     chosen = rng.sample(templates, 3)
-    code = f"student = {lit(d)}\n" + "\n".join(c for c, _, _ in chosen)
-    lines = [(r, w) for _, r, w in chosen]
-    return trace_question(
-        MEDIUM, code, lines, rng,
-        'Use the key in square brackets to get a value: `student["grade"]` is a number, so `+ 1` is real addition. `len(student)` counts the keys.',
-    )
+    code = f"student = {lit(d)}\n" + "\n".join(c for c, _, _, _ in chosen)
+    lines = [(r, w) for _, r, w, _ in chosen]
+    return trace_question(MEDIUM, code, lines, rng, " ".join(e for _, _, _, e in chosen))
 
 
-ALIAS_PAIRS = [("scores", "backup"), ("team", "squad"), ("fruits", "basket"), ("players", "roster"), ("names", "group")]
+ALIAS_PAIRS = [
+    # (name, other name for the same list, what the list holds)
+    ("scores", "backup", "nums"), ("numbers", "same_numbers", "nums"), ("team", "squad", "people"),
+    ("players", "roster", "people"), ("names", "group", "people"), ("fruits", "basket", "fruits"), ("snacks", "bag", "snacks"),
+]
+
+
+def alias_items(kind: str, n: int, rng: random.Random, avoid=()) -> list:
+    """n distinct items of the given kind that are not in ``avoid``."""
+    pool = {
+        "nums": [55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        "people": PEOPLE,
+        "fruits": FRUITS,
+        "snacks": SNACKS,
+    }[kind]
+    return rng.sample([x for x in pool if x not in avoid], n)
 
 
 @generator(TOPIC, MEDIUM)
 def gen_list_alias(rng: random.Random) -> Question:
     """Common Gotcha: 'Lists are mutable: changing one place changes all references to that same list.'"""
-    a, b = rng.choice(ALIAS_PAIRS)
-    use_numbers = rng.random() < 0.5
-    if use_numbers:
-        items = rng.sample([60, 70, 75, 80, 85, 90, 95], 3)
-        new = rng.choice([100, 55, 65])
-    else:
-        items = rng.sample(FRUITS, 3)
-        new = rng.choice([f for f in FRUITS if f not in items])
+    a, b, kind = rng.choice(ALIAS_PAIRS)
+    items = alias_items(kind, 3, rng)
+    new = alias_items(kind, 1, rng, avoid=items)[0]
     if rng.random() < 0.5:
         change = f"{b}.append({lit(new)})"
         result = items + [new]
@@ -860,9 +910,10 @@ def gen_membership_trace(rng: random.Random) -> Question:
     absent = [x for x in pool if x not in items][0]
     kind = rng.choice(["list", "set", "tuple"])
     src = {"list": lit(items), "tuple": lit(tuple(items)), "set": set_src(items)}[kind]
+    capital = items[rng.randrange(3)].capitalize()
     tests = [
         (f"{lit(items[rng.randrange(3)])} in {name}", True),
-        (f"{lit(items[rng.randrange(3)].capitalize())} in {name}", False),
+        (f"{lit(capital)} in {name}", False),
         (f"{lit(absent)} in {name}", False),
     ]
     rng.shuffle(tests)
@@ -870,7 +921,7 @@ def gen_membership_trace(rng: random.Random) -> Question:
     lines = [(str(r), [str(not r)]) for _, r in tests]
     return trace_question(
         MEDIUM, code, lines, rng,
-        "`x in collection` is `True` when x is one of the items. Text must match exactly, so `\"Cat\"` is not `\"cat\"`.",
+        f"`x in collection` is `True` when x is one of the items. Text must match exactly, so {lit(capital)} is not {lit(capital.lower())}.",
     )
 
 
@@ -943,10 +994,10 @@ WHY_FAILS = [
         "`input()` always returns text. Cast it first: `int(age) + 1`.",
     ),
     (
-        'me = {me}\nme.append("PE")',
+        "{me_line}\nme.append({new})",
         "`append` is a list method, and `me` is a dictionary",
-        ["`\"PE\"` is not a valid class", "`append` needs a number", "A dictionary can only be changed with `+=`"],
-        'The classes are in a list inside the dictionary: `me["classes"].append("PE")`.',
+        ["{new} is not a valid class name", "`append` needs a number", "A dictionary can only be changed with `+=`"],
+        'The classes are in a list inside the dictionary: `me["classes"].append({new})`.',
     ),
 ]
 
@@ -962,14 +1013,15 @@ def gen_why_fails(rng: random.Random) -> Question:
     me = me_dict(rng, 3)
     fields = dict(
         a=a, b=b, c=c, colors=set_src(rng.sample(COLOR_WORDS, 3)), student=lit(d),
-        word=rng.choice(["Python", "banana", "coding"]), name=name, items=lit(items), n=3, last=2, me=lit(me),
+        word=rng.choice(["Python", "banana", "coding"]), name=name, items=lit(items), n=3, last=2,
+        me_line=me_src(me), new=lit(rng.choice([s for s in SUBJECTS if s not in me["classes"]])),
     )
     code = template.format(**fields)
     if runnable and run_code(code).error is None:
         raise GenerationError("this snippet should fail but runs fine")
     return build_question(
         topic=TOPIC, difficulty=MEDIUM, prompt="Why does this code fail?", correct=right.format(**fields),
-        distractors=wrong, explanation=why.format(**fields), rng=rng, code=code,
+        distractors=[w.format(**fields) for w in wrong], explanation=why.format(**fields), rng=rng, code=code,
     )
 
 
@@ -1016,7 +1068,7 @@ def gen_type_of_expression(rng: random.Random) -> Question:
     return output_question(
         topic=TOPIC, difficulty=MEDIUM, code=code, distractors=wrong, rng=rng,
         prompt="What does this code print?",
-        explanation=f"`{expr}` produces a `{t}`, so `type` shows `{cls(t)}`. Work out the value first, then ask for its type.",
+        explanation=f"The value of `{expr}` is {a_an(t)} `{t}`, so `type` shows `{cls(t)}`. Work out the value first, then ask for its type.",
     )
 
 
@@ -1027,18 +1079,17 @@ def gen_me_trace(rng: random.Random) -> Question:
     classes = me["classes"]
     k = len(classes)
     templates = [
-        ("print(len(me))", "3", [str(k), "2"]),
-        ('print(len(me["classes"]))', str(k), ["3", str(k - 1)]),
-        ('print(me["classes"][1])', classes[1], [classes[0], classes[2]]),
-        ('print(me["classes"][-1])', classes[-1], [classes[0], classes[-2]]),
-        ('print(me["name"])', me["name"], ["name", str(me["grade"])]),
-        ('print(len(me["name"]))', str(len(me["name"])), [str(len(me["name"]) + 1), "1"]),
+        ("print(len(me))", "3", [str(k), "2"], '`len(me)` counts the dictionary\'s 3 keys.'),
+        ('print(len(me["classes"]))', str(k), ["3", str(k - 1)], f'`len(me["classes"])` counts the items in the list: {k}.'),
+        ('print(me["classes"][1])', classes[1], [classes[0], classes[2]], '`me["classes"][1]` is the second class (indexes start at 0).'),
+        ('print(me["classes"][-1])', classes[-1], [classes[0], classes[-2]], '`me["classes"][-1]` is the last class.'),
+        ('print(me["name"])', me["name"], ["name", str(me["grade"])], '`me["name"]` looks up the value stored under the key "name".'),
+        ('print(len(me["name"]))', str(len(me["name"])), [str(len(me["name"]) + 1), "1"], f'`len(me["name"])` counts the letters in the name: {len(me["name"])}.'),
     ]
     chosen = rng.sample(templates, 3)
-    code = f"me = {lit(me)}\n" + "\n".join(c for c, _, _ in chosen)
+    code = me_src(me) + "\n" + "\n".join(c for c, _, _, _ in chosen)
     return trace_question(
-        MEDIUM, code, [(r, w) for _, r, w in chosen], rng,
-        'The dictionary has 3 keys, so `len(me)` is 3. `me["classes"]` is a list, so you can index it or count it with `len`.',
+        MEDIUM, code, [(r, w) for _, r, w, _ in chosen], rng, " ".join(e for _, _, _, e in chosen),
     )
 
 
@@ -1066,7 +1117,7 @@ def gen_me_expression(rng: random.Random) -> Question:
         why = '`me["classes"]` is the list of classes, and `len` counts its items. `len(me)` would count the dictionary\'s keys.'
     rng.shuffle(wrong)
     return which_expression_question(
-        topic=TOPIC, difficulty=MEDIUM, prompt=prompt, setup=f"me = {lit(me)}", target=target,
+        topic=TOPIC, difficulty=MEDIUM, prompt=prompt, setup=me_src(me), target=target,
         correct_expr=correct, wrong_exprs=wrong, explanation=why, rng=rng,
     )
 
@@ -1087,8 +1138,8 @@ def gen_me_add_class(rng: random.Random) -> Question:
     return which_expression_question(
         topic=TOPIC, difficulty=MEDIUM,
         prompt=f"Which statement adds {lit(new)} to the end of the classes list inside `me`?",
-        setup=f"me = {lit(me)}", target=None, correct_expr=f'me["classes"].append({lit(new)})', wrong_exprs=wrong,
-        explanation='The classes are a list stored under the key `"classes"`, so get the list first and then call `append` on it. `me.append(...)` fails because `me` is a dictionary.',
+        setup=me_src(me), target=None, correct_expr=f'me["classes"].append({lit(new)})', wrong_exprs=wrong,
+        explanation='The classes are a list stored under the key `"classes"`, so get the list first and then call `append` on it. `me.append(...)` fails because `me` is a dictionary, and `me["classes"] = ...` would replace the whole list.',
         rng=rng,
     )
 
@@ -1099,7 +1150,7 @@ def gen_me_fstring(rng: random.Random) -> Question:
     me = me_dict(rng, rng.choice([4, 5, 2]))
     k = len(me["classes"])
     code = (
-        f"me = {lit(me)}\n"
+        f"{me_src(me)}\n"
         'name = me["name"]\n'
         'grade = me["grade"]\n'
         'n = len(me["classes"])\n'
@@ -1177,6 +1228,185 @@ def gen_which_line_errors(rng: random.Random) -> Question:
     )
 
 
+# -- "which line goes in the blank" ---------------------------------------------------------------
+
+def fill_blank_question(
+    difficulty: int,
+    before: str,
+    after: str,
+    correct: str,
+    wrongs,
+    goal: str,
+    explanation: str,
+    rng: random.Random,
+) -> Question:
+    """'Which line goes in the blank?'  Every candidate is run in the snippet: only the correct line
+    prints ``goal``'s expected output without an error (candidates that also work are dropped)."""
+    def run(line: str):
+        return run_code(f"{before}\n{line}\n{after}".strip("\n"))
+
+    ok = run(correct)
+    if ok.error:
+        raise GenerationError(f"correct line raised {ok.error}")
+    keep = []
+    for w in wrongs:
+        r = run(w)
+        if r.error or r.output != ok.output:
+            keep.append(w)
+    shown = f"{before}\n____\n{after}".strip("\n")
+    return build_question(
+        topic=TOPIC, difficulty=difficulty,
+        prompt=f"Which line goes in the blank so the code {goal.format(out=ok.output.strip())}?",
+        correct=correct, distractors=keep, explanation=explanation, rng=rng, code=shown,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_complete_line(rng: random.Random) -> Question:
+    """'Which line completes the lab code?' -- append, an index change, a dict lookup, a set, a tuple, `in`."""
+    form = rng.choice(["append", "change", "dict", "set", "tuple", "member"])
+    if form == "append":
+        name, items = item_list(rng, 3)
+        new = rng.choice([x for x in ITEM_POOLS[name] if x not in items])
+        return fill_blank_question(
+            MEDIUM, f"{name} = {lit(items)}", f"print({name})",
+            f"{name}.append({lit(new)})",
+            [f"{name}.add({lit(new)})", f"{name} + {lit(new)}", f"{name}[3] = {lit(new)}", f"append({name}, {lit(new)})", f"{name} = {lit(new)}"],
+            "prints {out}",
+            f"`append` adds the new item to the end of the list. `{name}[3] = ...` fails because the list only has indexes 0 to 2, and `{name} + ...` doesn't change the list.",
+            rng,
+        )
+    if form == "change":
+        name, items = item_list(rng, 3)
+        new = rng.choice([x for x in ITEM_POOLS[name] if x not in items])
+        i = rng.choice([0, 1, 2])
+        return fill_blank_question(
+            MEDIUM, f"{name} = {lit(items)}", f"print({name})",
+            f"{name}[{i}] = {lit(new)}",
+            [f"{name}.append({lit(new)})", f"{name}[{i}] == {lit(new)}", f"{name}.replace({lit(items[i])}, {lit(new)})", f"{name}[{(i + 1) % 3}] = {lit(new)}"],
+            "prints {out}",
+            f"Lists are changeable, so `{name}[{i}] = {lit(new)}` replaces the item at index {i}. `append` would add to the end, and `==` only compares.",
+            rng,
+        )
+    if form == "dict":
+        d = student_dict(rng)
+        key = rng.choice(["name", "grade", "gpa"])
+        var = {"name": "who", "grade": "year", "gpa": "points"}[key]
+        others = [k for k in d if k != key]
+        return fill_blank_question(
+            MEDIUM, f"student = {lit(d)}", f"print({var})",
+            f'{var} = student["{key}"]',
+            [f"{var} = student[{key}]", f"{var} = student.{key}", f'{var} = student("{key}")', f'{var} = student["{others[0]}"]', f"{var} = student[{list(d).index(key)}]"],
+            "prints {out}",
+            f'Look a value up with its key in quotes: `student["{key}"]`. Without the quotes Python looks for a variable named `{key}`.',
+            rng,
+        )
+    if form == "set":
+        colors = rng.sample(COLOR_WORDS, 3)
+        data = colors + rng.sample(colors, 2)
+        rng.shuffle(data)
+        return fill_blank_question(
+            MEDIUM, f"colors = {lit(data)}", "print(len(unique))",
+            "unique = set(colors)",
+            ["unique = colors", "unique = len(colors)", "unique = {colors}", "unique = (colors)", "unique = colors[0]"],
+            "prints {out}",
+            f"`set(colors)` keeps one copy of each different color, so `len(unique)` counts only the {len(colors)} different ones.",
+            rng,
+        )
+    if form == "tuple":
+        a, b = rng.choice([(10, 20), (3, 4), (5, 9), (2, 8)])
+        i = rng.choice([0, 1])
+        var = ["x", "y"][i]
+        return fill_blank_question(
+            MEDIUM, f"point = ({a}, {b})", f"print({var})",
+            f"{var} = point[{i}]",
+            [f"{var} = point[{1 - i}]", f"{var} = point({i})", f"{var} = [point]", f"{var} = point[{i + 2}]", f"{var} = point.{i}"],
+            "prints {out}",
+            f"A tuple is indexed like a list: `point[{i}]` is the {'first' if i == 0 else 'second'} item. Round brackets after the name would try to call it like a function.",
+            rng,
+        )
+    colors = rng.sample(COLOR_WORDS, 3)
+    pick = rng.choice(colors)
+    return fill_blank_question(
+        MEDIUM, f"colors = {set_src(colors)}", "print(found)",
+        f"found = {lit(pick)} in colors",
+        [f"found = colors[{lit(pick)}]", "found = colors[0]", f"found = {lit(pick)} == colors", f"found = colors.{pick}", f"found = colors.contains({lit(pick)})"],
+        "prints {out}",
+        f"Use `in` to test whether an item is in a set: `{lit(pick)} in colors` is `True`. A set has no index positions and no keys.",
+        rng,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_what_works(rng: random.Random) -> Question:
+    """Lab: 'Data types determine what you can do with a value (add, slice, iterate, etc.)'."""
+    age = rng.choice([15, 16, 17, 18])
+    title = rng.choice(TITLES)
+    name, items = item_list(rng, 3)
+    new = rng.choice([x for x in ITEM_POOLS[name] if x not in items])
+    setup = f"age = {age}\ntitle = {lit(title)}\n{name} = {lit(items)}"
+    errors = [
+        ("len(age)", "An int is a single number, so it has no length. `len` works on a str, list, tuple, set or dict."),
+        ("age[0]", "An int has no positions to index. A str or a list does."),
+        ("age.append(1)", "`append` is a list method. An int has no `append`."),
+        ("title + age", "A str can't be added to an int. Cast first, or use an f-string."),
+        (f"{name} + 1", "A list can't be added to a number."),
+        ('title.append("!")', "A str has no `append`. Strings can't be changed; you build a new one with `+`."),
+    ]
+    fine = [
+        ("len(title)", "`len` counts the characters in a str."),
+        ("title[0:3]", "A str can be sliced."),
+        ("title.upper()", "`upper` is a str method."),
+        (f"{name}[0]", "A list can be indexed."),
+        ("age + 1", "Numbers can be added."),
+        ("age * 2", "Numbers can be multiplied."),
+        (f"len({name})", "`len` counts the items in a list."),
+        (f"{name}.append({lit(new)})", "`append` is a list method."),
+        ('title + "!"', "Strings can be joined with `+`."),
+    ]
+    bad, why = rng.choice(errors)
+    good = rng.sample(fine, 3)
+    if _runs_ok(setup, bad) or not all(_runs_ok(setup, g) for g, _ in good):
+        raise GenerationError("what-works world mismatch")
+    return build_question(
+        topic=TOPIC, difficulty=MEDIUM, prompt="Which line causes an error?", correct=bad,
+        distractors=[g for g, _ in good], explanation=why, rng=rng, code=setup,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_list_slice(rng: random.Random) -> Question:
+    """Lists are ordered like strings, so the lab's slice idea `title[0:5]` works on a list too."""
+    name, items = item_list(rng, rng.choice([4, 5]))
+    n = len(items)
+    form = rng.choice(["start_stop", "start_stop", "reverse", "type"])
+    if form == "start_stop":
+        a = rng.choice([0, 1])
+        b = rng.choice([x for x in (2, 3, 4) if x > a and x < n])
+        expr = f"{name}[{a}:{b}]"
+        wrong = [items[a:b + 1], items[a + 1:b], items[b], items[a:b - 1] if b - 1 > a else items[a:], items[b:]]
+        why = f"A slice `[{a}:{b}]` starts at index {a} and stops BEFORE index {b}, so it gives {b - a} item{'s' if b - a != 1 else ''} in a new list."
+    elif form == "reverse":
+        expr = f"{name}[::-1]"
+        wrong = [items, items[1:], items[-1], items[::-1][:-1], items[:0]]
+        why = "`[::-1]` goes through the list backwards, so it gives the items in reverse order (the original list is not changed)."
+    else:
+        a, b = 0, rng.choice([2, 3])
+        expr = f"{name}[{a}:{b}]"
+        code = f"{name} = {lit(items)}\nprint(type({expr}))"
+        return output_question(
+            topic=TOPIC, difficulty=MEDIUM, code=code,
+            distractors=[cls("str"), cls("tuple"), cls("int"), cls("set")],
+            explanation=f"A slice of a list is a new list, so `type` shows `{cls('list')}`.",
+            rng=rng,
+        )
+    code = f"{name} = {lit(items)}\nprint({expr})"
+    return output_question(
+        topic=TOPIC, difficulty=MEDIUM, code=code, distractors=[repr(w) if isinstance(w, list) else w for w in wrong],
+        explanation=why, rng=rng,
+    )
+
+
 # ==========================================================================
 # HARD -- multiple choice (a twist or two steps to trace; needs care, never obscure)
 # ==========================================================================
@@ -1186,22 +1416,22 @@ def gen_which_line_errors(rng: random.Random) -> Question:
 def gen_alias_two_step(rng: random.Random) -> Question:
     """Common Gotcha: 'Lists are mutable: changing one place changes all references to that same list.'"""
     form = rng.choice(["both_append", "rebind", "index_pair"])
-    a, b = rng.choice(ALIAS_PAIRS)
+    a, b, kind = rng.choice(ALIAS_PAIRS)
     if form == "both_append":
-        items = rng.sample([60, 70, 75, 80, 85, 90, 95], 2)
-        x, y = rng.sample([100, 55, 65, 40], 2)
-        code = f"{a} = {lit(items)}\n{b} = {a}\n{b}.append({x})\n{a}.append({y})\nprint(len({a}), len({b}))"
-        wrong = ["3 4", "3 3", "4 3", "2 3"]
+        items = alias_items(kind, 2, rng)
+        x, y = alias_items(kind, 2, rng, avoid=items)
+        code = f"{a} = {lit(items)}\n{b} = {a}\n{b}.append({lit(x)})\n{a}.append({lit(y)})\nprint(len({a}), len({b}))"
+        wrong = ["3 4", "3 3", "4 3", "2 3", "2 4"]
         why = f"`{b} = {a}` means both names refer to one list, so the two `append` calls add to the same list. Both names see all 4 items."
     elif form == "rebind":
-        items = rng.sample([1, 2, 3, 4, 5, 6], 3)
-        new = rng.sample([7, 8, 9], 2)
+        items = alias_items(kind, 3, rng)
+        new = alias_items(kind, 2, rng, avoid=items)
         code = f"{a} = {lit(items)}\n{b} = {a}\n{a} = {lit(new)}\nprint({b})"
         wrong = [repr(new), repr(items + new), repr([new[0]] + items[1:])]
         why = f"`{a} = {lit(new)}` points `{a}` at a brand-new list. `{b}` still refers to the original list, so it is unchanged."
     else:
-        items = rng.sample(PEOPLE, 3)
-        new = rng.choice([p for p in PEOPLE if p not in items])
+        items = alias_items(kind, 3, rng)
+        new = alias_items(kind, 1, rng, avoid=items)[0]
         code = f"{a} = {lit(items)}\n{b} = {a}\n{b}[0] = {lit(new)}\nprint({a}[0], {b}[0])"
         wrong = [f"{items[0]} {new}", f"{new} {items[0]}", f"{items[0]} {items[0]}", f"{new} {items[1]}"]
         why = f"Both names refer to the same list, so changing item 0 through `{b}` also changes it when you look through `{a}`."
@@ -1216,7 +1446,7 @@ def gen_me_mutate_trace(rng: random.Random) -> Question:
     old_n = len(me["classes"])
     after = me["classes"] + [new]
     code = (
-        f"me = {lit(me)}\n"
+        f"{me_src(me)}\n"
         f'me["classes"].append({lit(new)})\n'
         'print(len(me["classes"]))\n'
         'print(me["classes"][-1])\n'
@@ -1267,7 +1497,15 @@ def gen_count_by_type(rng: random.Random) -> Question:
     bool_as_int = sum(1 for v in values if isinstance(v, int))
     numbers = sum(1 for v in values if isinstance(v, (int, float)))
     wrong = [count + 1, bool_as_int, numbers, count - 1, len(values), count + 2]
-    why = f"The loop counts only the values whose type is `{target}`: {count}. Remember `True` and `False` are `bool`, not `int`, and `\"5\"` in quotes is a `str`."
+    why = f"The loop counts only the values whose type is `{target}`: {count}."
+    if any(type(v) is bool for v in values):
+        why += " Remember `True` and `False` are `bool`, not `int`."
+    quoted = [v for v in values if type(v) is str and v.replace(".", "", 1).isdigit()]
+    if quoted:
+        why += f" `{lit(quoted[0])}` is in quotes, so it is a `str`."
+    floats = [v for v in values if type(v) is float]
+    if floats and target == "int":
+        why += f" `{floats[0]!r}` has a decimal point, so it is a `float`."
     return output_question(
         topic=TOPIC, difficulty=HARD, code=code, distractors=[str(w) for w in wrong if w >= 0], explanation=why, rng=rng
     )
@@ -1352,7 +1590,8 @@ def gen_which_line_works(rng: random.Random) -> Question:
         raise GenerationError("line world mismatch")
     return build_question(
         topic=TOPIC, difficulty=HARD, prompt="Which line runs without an error?", correct=ok,
-        distractors=[b for b, _ in bad], explanation=f"{ok_why} The others fail: tuples, sets and strings can't be changed like that, and a dict needs a key it actually has.",
+        distractors=[b for b, _ in bad],
+        explanation=f"{ok_why} The others fail: " + "; ".join(f"`{b}` ({r[0].lower() + r[1:].rstrip('.')})" for b, r in bad) + ".",
         rng=rng, code=setup,
     )
 
@@ -1436,10 +1675,97 @@ def gen_types_loop_trace(rng: random.Random) -> Question:
     srcs = [s for s, _ in picks]
     code = f"items = [{', '.join(srcs)}]\nfor item in items:\n    print(type(item))"
     lines = [(cls(t), [cls(CONFUSE[t][0]), cls(CONFUSE[t][1])]) for _, t in picks]
+    facts = ", ".join(f"`{s}` is {a_an(t)} `{t}`" for s, t in picks)
     return trace_question(
         HARD, code, lines, rng,
-        "The loop prints one `type` per item: `7` is an `int`, `7.0` a `float`, `\"7\"` a `str`, and `True` a `bool` (not an `int`).",
+        f"The loop prints one `type` per item, in order: {facts}." + (" Remember `True` is a `bool`, not an `int`." if "True" in srcs else ""),
         prompt="What does this code print?",
+    )
+
+
+# -- "which version of this line fixes the error" -------------------------------------------------
+
+def fix_line_question(
+    code_lines: list[str],
+    line_no: int,
+    correct: str,
+    wrongs,
+    goal_out: str,
+    explanation: str,
+    rng: random.Random,
+    run_lines: list[str] | None = None,
+) -> Question:
+    """Hard 'what is the fix' question: replace line ``line_no`` (1-based) with each candidate and run it.
+    The original code must not give ``goal_out``; only ``correct`` (and not the wrongs) may.
+    ``run_lines`` is what really runs when the shown code contains something we can't execute (input())."""
+    real = list(run_lines or code_lines)
+
+    def run(line: str):
+        trial = list(real)
+        trial[line_no - 1] = line
+        return run_code("\n".join(trial))
+
+    original = run_code("\n".join(real))
+    if not original.error and original.output.strip() == goal_out:
+        raise GenerationError("the original code already works")
+    ok = run(correct)
+    if ok.error or ok.output.strip() != goal_out:
+        raise GenerationError(f"fix does not work: {correct!r} -> {ok.output!r} {ok.error}")
+    keep = [w for w in wrongs if (lambda r: r.error or r.output.strip() != goal_out)(run(w))]
+    return build_question(
+        topic=TOPIC, difficulty=HARD,
+        prompt=f"The code should print `{goal_out}` but it does not work. Which version of line {line_no} fixes it?",
+        correct=correct, distractors=keep, explanation=explanation, rng=rng, code="\n".join(code_lines),
+    )
+
+
+@generator(TOPIC, HARD)
+def gen_fix_the_line(rng: random.Random) -> Question:
+    """'Choose the right data type / cast': tuple -> list, list -> dict, str + int, immutable string."""
+    form = rng.choice(["tuple_to_list", "list_to_dict", "cast_age", "string_edit"])
+    if form == "tuple_to_list":
+        a, b = rng.choice([(10, 20), (3, 4), (5, 9), (2, 8)])
+        new = rng.choice([15, 30, 99, 7])
+        lines = [f"point = ({a}, {b})", f"point[0] = {new}", "print(point[0])"]
+        return fix_line_question(
+            lines, 1, f"point = [{a}, {b}]",
+            [f"point = {{{a}, {b}}}", f'point = "{a}, {b}"', f"point = ({a}, {b}, {new})", f"point = ({a}, {b}, 0)"],
+            str(new),
+            "A tuple can't be changed, so `point[0] = ...` fails. A list is ordered and changeable, so it works. A set has no index positions and a string can't be changed either.",
+            rng,
+        )
+    if form == "list_to_dict":
+        d = student_dict(rng)
+        key = rng.choice(["name", "gpa"])
+        vals = list(d.values())
+        lines = [f"student = {lit(vals)}", f'print(student["{key}"])']
+        return fix_line_question(
+            lines, 1, f"student = {lit(d)}",
+            [f"student = {{{', '.join(f'{lit(v)}: {lit(k)}' for k, v in d.items())}}}", f"student = {set_src(vals)}", f"student = {lit(tuple(vals))}", f'student = "{vals[0]} {vals[1]} {vals[2]}"'],
+            str(d[key]),
+            "A value is looked up by a key like `\"name\"`, so the data needs to be a dictionary of `key: value` pairs. A list only understands index numbers.",
+            rng,
+        )
+    if form == "cast_age":
+        age = rng.choice([15, 16, 17, 18])
+        shown = ["age = input(\"Age: \")   # the user types " + str(age), "print(age + 1)"]
+        runs = [f'age = "{age}"', "print(age + 1)"]
+        return fix_line_question(
+            shown, 2, "print(int(age) + 1)",
+            ["print(str(age) + 1)", 'print(age + "1")', "print(float(age) + \"1\")", "print(age + int(1))"],
+            str(age + 1),
+            "`input()` gives a str, and a str can't be added to an int. Cast first: `int(age) + 1`. `age + \"1\"` would glue the text together instead.",
+            rng, run_lines=runs,
+        )
+    word = rng.choice(["Python", "banana", "coding", "student"])
+    ch = rng.choice(["J", "X", "Z"])
+    lines = [f"word = {lit(word)}", f"word[0] = {lit(ch)}", "print(word)"]
+    return fix_line_question(
+        lines, 2, f"word = {lit(ch)} + word[1:]",
+        [f"word.replace({lit(word[0])}, {lit(ch)})", f"word = word[0] + {lit(ch)}", f"word = {lit(ch)} + word", f"word[0] == {lit(ch)}"],
+        ch + word[1:],
+        "Strings can't be changed in place, so build a new string and assign it back: the new first letter plus `word[1:]`. A method like `replace` returns a new string, but it is thrown away unless you assign it.",
+        rng,
     )
 
 
@@ -1538,7 +1864,7 @@ def gen_blanks_dict_keys(rng: random.Random) -> Question:
 def gen_blanks_string_lab(rng: random.Random) -> Question:
     """Canvas-style 'fill in multiple blanks' for the lab's String block (len, upper, slice)."""
     title = rng.choice(TITLES)
-    k = rng.choice([3, 4, 5, 6])
+    k = pick_slice_end(title, rng)
     template = (
         f"title = {lit(title)}\n"
         f'print("Length:", {blank_mark(1)}(title))\n'
@@ -1564,7 +1890,7 @@ def gen_blanks_me_lookup(rng: random.Random) -> Question:
     which = rng.choice(["second", "first", "last"])
     idx_accept, pos = {"second": (["1"], 1), "first": (["0"], 0), "last": (["-1", str(k - 1)], -1)}[which]
     template = (
-        f"me = {lit(me)}\n"
+        f"{me_src(me)}\n"
         f"print(me[{blank_mark(1)}])\n"
         f'print(me["classes"][{blank_mark(2)}])'
     )
@@ -1632,7 +1958,7 @@ def gen_blanks_me_fstring(rng: random.Random) -> Question:
     """Mini-Challenge: '{name} is in grade {grade} and is taking {N} classes.'"""
     me = me_dict(rng, rng.choice([2, 4, 5]))
     template = (
-        f"me = {lit(me)}\n"
+        f"{me_src(me)}\n"
         f"name = me[{blank_mark(1)}]\n"
         f"grade = me[{blank_mark(2)}]\n"
         f'n = {blank_mark(3)}(me["classes"])\n'
@@ -1649,6 +1975,78 @@ def gen_blanks_me_fstring(rng: random.Random) -> Question:
         ],
         explanation='Look up the name and grade by their keys, and count the classes with `len(me["classes"])`. The f-string then fills in each `{...}`.',
         expect_output=f"{me['name']} is in grade {me['grade']} and is taking {len(me['classes'])} classes.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="blanks")
+def gen_blanks_lab_mix(rng: random.Random) -> Question:
+    """The whole lab in miniature: list append + index, tuple index, set dedupe, dict key."""
+    name, items = item_list(rng, 3)
+    single = name[:-1]
+    new = rng.choice([x for x in ITEM_POOLS[name] if x not in items])
+    after = items + [new]
+    colors = rng.sample(COLOR_WORDS, 3)
+    point = rng.choice([(10, 20), (3, 4), (5, 9), (2, 8)])
+    d = student_dict(rng)
+    which_item = rng.choice(["first", "last"])
+    item_accept, item_val = (["0"], after[0]) if which_item == "first" else (["-1", str(len(after) - 1)], after[-1])
+    pi = rng.choice([0, 1])
+    key = rng.choice(["name", "grade", "gpa"])
+    template = (
+        f"{name} = {lit(items)}\n"
+        f"{name}.{blank_mark(1)}({lit(new)})\n"
+        f"point = {lit(point)}\n"
+        f"colors = {set_src(colors + [colors[0]])}\n"
+        f"student = {lit(d)}\n"
+        f"print({name}[{blank_mark(2)}])\n"
+        f"print(point[{blank_mark(3)}])\n"
+        "print(len(colors))\n"
+        f"print(student[{blank_mark(4)}])"
+    )
+    ordinal = "first" if pi == 0 else "second"
+    return blanks_question(
+        topic=TOPIC, difficulty=HARD,
+        prompt=f"Fill in the blanks: add {lit(new)} to the list, then print the {which_item} {single}, the {ordinal} number of the point, how many different colors there are, and the student's {key}.",
+        template=template,
+        blanks=[
+            Blank(["append"], hint="list method"),
+            Blank(item_accept, hint="index", mode="expr"),
+            Blank([str(pi)], hint="index", mode="expr"),
+            Blank([f'"{key}"'], hint="key", mode="expr"),
+        ],
+        explanation=f"`append` adds to the end of the list; `0` is the first index and `-1` the last. The tuple is read by index, the set keeps 3 different colors, and the dictionary is read by its key in quotes.",
+        expect_output=f"{item_val}\n{point[pi]}\n3\n{d[key]}",
+    )
+
+
+@generator(TOPIC, HARD, qtype="blanks")
+def gen_blanks_count_type(rng: random.Random) -> Question:
+    """A counting loop over mixed values: start at 0, compare type(value), add 1 with +=."""
+    pool = [5, 12, 0, "5", "hi", "seven", 2.5, 3.0, True, False, None]
+    values = rng.sample(pool, 6)
+    target = rng.choice([t for t in ("str", "int", "float", "bool") if any(type(v).__name__ == t for v in values)])
+    count = sum(1 for v in values if type(v).__name__ == target)
+    template = (
+        f"values = {lit(values)}\n"
+        f"count = {blank_mark(1)}\n"
+        "for value in values:\n"
+        f"    if type(value) == {blank_mark(2)}:\n"
+        f"        count {blank_mark(3)} 1\n"
+        "print(count)"
+    )
+    word = {"str": "strings (text)", "int": "ints (whole numbers)", "float": "floats (numbers with a decimal point)", "bool": "bools (`True` or `False`)"}[target]
+    return blanks_question(
+        topic=TOPIC, difficulty=HARD,
+        prompt=f"Fill in the blanks so the code prints how many of the values are {word}.",
+        template=template,
+        blanks=[
+            Blank(["0"], hint="start value", mode="expr"),
+            Blank([target], hint="type name"),
+            Blank(["+="], hint="operator"),
+        ],
+        explanation=f"A counter starts at `0`, the `if` compares `type(value)` with `{target}`, and `count += 1` adds one each time it matches. The answer is {count}."
+        + (" `True` and `False` are `bool`, not `int`." if any(type(v) is bool for v in values) and target == "int" else ""),
+        expect_output=str(count),
     )
 
 
@@ -1829,6 +2227,67 @@ def gen_match_expression_type(rng: random.Random) -> Question:
     )
 
 
+VAR_LINES = [
+    # (assignment, variable, type name)
+    ('gpa = student["gpa"]', "gpa", "float"),
+    ('grade = student["grade"]', "grade", "int"),
+    ("count = len(student)", "count", "int"),
+    ('grades = [student["grade"], 12]', "grades", "list"),
+    ('pair = (student["name"], student["grade"])', "pair", "tuple"),
+    ('honors = student["gpa"] >= 3.5', "honors", "bool"),
+    ('tag = student["name"] + "!"', "tag", "str"),
+    ('years = {student["grade"], 12}', "years", "set"),
+    ('record = {"gpa": student["gpa"]}', "record", "dict"),
+]
+
+
+@generator(TOPIC, HARD, qtype="match")
+def gen_match_variable_types(rng: random.Random) -> Question:
+    """Work out what each line builds from the `student` dictionary, then name its type."""
+    d = student_dict(rng)
+    picks = rng.sample(VAR_LINES, 5)
+    while len({t for _, _, t in picks}) < 4:
+        picks = rng.sample(VAR_LINES, 5)
+    setup = f"student = {lit(d)}\n" + "\n".join(line for line, _, _ in picks)
+    for _, var, t in picks:  # check against Python itself
+        if out_text(f"{setup}\nprint(type({var}).__name__)").strip() != t:
+            raise GenerationError(f"{var} is not {t}")
+    extras = [t for t in ("int", "float", "str", "bool", "list", "tuple", "set", "dict") if t not in {t for _, _, t in picks}][:1]
+    return match_question(
+        topic=TOPIC, difficulty=HARD, prompt="Match each variable to its data type.",
+        pairs=[(var, t) for _, var, t in picks], extra_options=extras, rng=rng, code=setup,
+        explanation="Work out each value first: a lookup gives the stored value, `len` gives an `int`, `[ ]` builds a list, `( )` a tuple, `{ }` with single items a set, `{ }` with key: value a dict, and a comparison gives a `bool`.",
+    )
+
+
+TYPE_DESCRIPTIONS = [
+    # (type, the lab's one-line description)
+    ("list", "ordered, changeable"),
+    ("tuple", "ordered, unchangeable"),
+    ("set", "unordered, unique items"),
+    ("dict", "key-value pairs"),
+    ("None", "no value"),
+    ("bool", "True or False"),
+    ("str", "text in quotes"),
+    ("int", "whole numbers"),
+    ("float", "numbers with a decimal point"),
+]
+
+
+@generator(TOPIC, EASY, qtype="match")
+def gen_match_type_description(rng: random.Random) -> Question:
+    """The lab's one-line descriptions: 'Lists (ordered, changeable)', 'Sets (unordered, unique items)', ..."""
+    core = [p for p in TYPE_DESCRIPTIONS if p[0] in ("list", "tuple", "set", "dict")]
+    others = [p for p in TYPE_DESCRIPTIONS if p not in core]
+    pairs = core + rng.sample(others, rng.choice([1, 2]))
+    rng.shuffle(pairs)
+    return match_question(
+        topic=TOPIC, difficulty=EASY, prompt="Match each data type to its description.",
+        pairs=pairs, rng=rng,
+        explanation="From the lab: " + "; ".join(f"`{t}` is {d}" for t, d in sorted(pairs, key=lambda p: TYPE_DESCRIPTIONS.index(p))) + ".",
+    )
+
+
 # ==========================================================================
 # CODE -- type real Python (graded in the sandbox against hidden tests)
 # ==========================================================================
@@ -1900,10 +2359,10 @@ def gen_code_dict_value(rng: random.Random) -> Question:
         solution = {"second_class": 'me["classes"][1]', "first_class": 'me["classes"][0]', "class_count": 'len(me["classes"])'}[mode]
         what = {"second_class": "the second class", "first_class": "the first class", "class_count": "how many classes there are"}[mode]
         prompt = f'`me` is a dictionary with the keys "name", "grade" and "classes" (a list of course names). Type an expression that gives {what}.'
-        why = 'First get the list with `me["classes"]`, then index it (indexes start at 0) or count it with `len`.'
+        why = f'First get the list with `me["classes"]`, then index it (indexes start at 0) or count it with `len`: `{solution}`.'
     return code_question(
         topic=TOPIC, difficulty=EASY, prompt=prompt, task=expression_task(solution, pairs),
-        explanation=f"`{solution}`. {why}",
+        explanation=f"{why}",
     )
 
 
@@ -1955,6 +2414,7 @@ def gen_code_in_expression(rng: random.Random) -> Question:
     wants_in = form != "list_not_in"
     contains = [True, False, True, False, True]
     rng.shuffle(contains)
+    contains[:2] = [True, False] if rng.random() < 0.5 else [False, True]
     cases = []
     for has in contains:
         others = rng.sample(pool, 3)
@@ -1973,6 +2433,56 @@ def gen_code_in_expression(rng: random.Random) -> Question:
     return code_question(
         topic=TOPIC, difficulty=EASY, prompt=prompt, task=expression_task(solution, cases),
         explanation=f"`{solution}` checks membership and gives `True` or `False`. Text must match exactly, including capital letters.",
+    )
+
+
+@generator(TOPIC, EASY, qtype="code")
+def gen_code_small_expr(rng: random.Random) -> Question:
+    """One-line expressions about a tuple, a dictionary, a list and a type."""
+    mode = rng.choice(["tuple_y", "tuple_x", "dict_len", "is_str", "is_empty"])
+    if mode in ("tuple_y", "tuple_x"):
+        i = 1 if mode == "tuple_y" else 0
+
+        def make(k):
+            pt = (rng.randint(-5, 30), rng.randint(-5, 30))
+            return ({"point": pt}, pt[i]), pt[i]
+
+        cases = _varied(rng, make, 4)
+        solution = f"point[{i}]"
+        prompt = f"`point` is a tuple `(x, y)`. Type an expression that gives the {'y' if i else 'x'} value."
+        why = f"A tuple is indexed like a list, so `point[{i}]` is the {'second' if i else 'first'} item."
+    elif mode == "dict_len":
+        keysets = [["name", "grade"], ["name", "grade", "gpa"], ["name", "age", "kind", "color"], ["name"], ["x", "y", "z"]]
+
+        def make(k):
+            keys = keysets[(k + rng.randrange(0, 5)) % 5]
+            return ({"record": {key: rng.choice([1, 2, 3, "a", "b"]) for key in keys}}, len(keys)), len(keys)
+
+        cases = _varied(rng, make, 4)
+        solution = "len(record)"
+        prompt = "`record` is a dictionary. Type an expression that gives how many keys it has."
+        why = "`len` of a dictionary counts its keys (the `key: value` pairs)."
+    elif mode == "is_str":
+        samples = ["Python", "5", "", 5, 5.0, True, None, [1, 2], (1, 2), "3.5", 0]
+        chosen = rng.sample(samples, 5)
+        if not any(type(v) is str for v in chosen):
+            chosen[0] = rng.choice(["Python", "5", "hi"])
+        if all(type(v) is str for v in chosen):
+            chosen[-1] = rng.choice([5, None, 2.5])
+        cases = [({"value": v}, type(v) is str) for v in chosen]
+        solution = "type(value) == str"
+        prompt = "Type an expression that is `True` when `value` is a string (`str`) and `False` for anything else."
+        why = "`type(value)` gives the data type, so compare it with `str`. Remember `\"5\"` in quotes is a `str`."
+    else:
+        pool = ["apple", "kiwi", "plum", "date", "pear"]
+        chosen = [[], rng.sample(pool, 2), [], rng.sample(pool, 1), rng.sample(pool, 4)]
+        rng.shuffle(chosen)
+        cases = [({"items": c}, len(c) == 0) for c in chosen]
+        solution = "len(items) == 0"
+        prompt = "`items` is a list. Type an expression that is `True` when the list is empty and `False` otherwise."
+        why = "An empty list has `len(items)` equal to 0. Remember to compare with `==`, not `=`."
+    return code_question(
+        topic=TOPIC, difficulty=EASY, prompt=prompt, task=expression_task(solution, cases), explanation=why,
     )
 
 
@@ -2029,8 +2539,32 @@ def gen_code_make_record(rng: random.Random) -> Question:
 @generator(TOPIC, MEDIUM, qtype="code")
 def gen_code_return_tuple(rng: random.Random) -> Question:
     """Tuples are ordered and unchangeable: a function that returns one."""
-    form = rng.choice(["make_point", "first_and_last", "min_max"])
-    if form == "make_point":
+    form = rng.choice(["make_point", "first_and_last", "min_max", "swap_pair", "move_point"])
+    if form == "swap_pair":
+        fn = "swap_pair"
+        solution = "def swap_pair(pair):\n    return (pair[1], pair[0])"
+
+        def make(i):
+            a, b = rng.sample(range(-5, 30), 2)
+            return (((a, b),), (b, a)), (a, b)
+
+        cases = _varied(rng, make, 4)
+        cases.append(Case(args=[("x", "y")], ret=("y", "x")))
+        prompt = "Write a function `swap_pair(pair)` that takes a tuple of two items and returns a new tuple with the two items swapped."
+        why = "A tuple can't be changed, so build a new one: `(pair[1], pair[0])`. Return it with `return`."
+    elif form == "move_point":
+        fn = "move_point"
+        solution = "def move_point(point, dx, dy):\n    return (point[0] + dx, point[1] + dy)"
+
+        def make(i):
+            x, y = rng.randint(-5, 15), rng.randint(-5, 15)
+            dx, dy = rng.choice([-3, -1, 0, 2, 4, 10]), rng.choice([-4, -2, 0, 1, 5, 8])
+            return (((x, y), dx, dy), (x + dx, y + dy)), (x, y, dx, dy)
+
+        cases = _varied(rng, make, 4)
+        prompt = "Tuples can't be changed, so write a function `move_point(point, dx, dy)` that returns a NEW tuple: the x value plus `dx`, and the y value plus `dy`."
+        why = "`point[0] + dx` and `point[1] + dy` are the new values. Put them in a new tuple and return it."
+    elif form == "make_point":
         fn = "make_point"
         solution = "def make_point(x, y):\n    return (x, y)"
 
@@ -2071,6 +2605,38 @@ def gen_code_return_tuple(rng: random.Random) -> Question:
     )
 
 
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_create_me(rng: random.Random) -> Question:
+    """Mini-Challenge: create the `me` dictionary yourself, then print from it."""
+    me = me_dict(rng, rng.choice([3, 3, 4]))
+    asks = rng.sample(
+        [
+            ("the name", 'print(me["name"])', me["name"], 'me["name"]'),
+            ("the second class", 'print(me["classes"][1])', me["classes"][1], 'me["classes"][1]'),
+            ("how many classes there are", 'print(len(me["classes"]))', str(len(me["classes"])), 'len(me["classes"])'),
+            ("the last class", 'print(me["classes"][-1])', me["classes"][-1], 'me["classes"][-1]'),
+        ],
+        2,
+    )
+    solution = f"me = {lit(me)}\n" + "\n".join(code for _, code, _, _ in asks)
+    mine = "\n".join(out for _, _, out, _ in asks)
+    cases = [
+        Case(label="check the dictionary", out=mine, expect_vars={"me": me}),
+        Case(label="then print the name", out=mine + "\n" + me["name"], expect_vars={"me": me}, after='print(me["name"])'),
+        Case(label="then print the classes", out=mine + "\n" + repr(me["classes"]), expect_vars={"me": me}, after='print(me["classes"])'),
+    ]
+    return code_question(
+        topic=TOPIC, difficulty=MEDIUM,
+        prompt=(
+            f'Create a dictionary named `me` with "name" set to {lit(me["name"])}, "grade" set to {me["grade"]} and "classes" set to the list '
+            f'{lit(me["classes"])}. Then print {asks[0][0]}, and then {asks[1][0]}, on separate lines.'
+        ),
+        task=program_task(solution, cases, examples=1),
+        explanation="Write the dictionary with `key: value` pairs (the classes are a list in square brackets). Then look the values up with "
+        + " and ".join(f"`{e}`" for _, _, _, e in asks) + ".",
+    )
+
+
 ME_FUNCS = [
     ("class_count", "returns how many classes there are", 'len(me["classes"])', lambda m: len(m["classes"])),
     ("second_class", "returns the second class", 'me["classes"][1]', lambda m: m["classes"][1]),
@@ -2104,7 +2670,7 @@ def gen_code_append_program(rng: random.Random) -> Question:
     final = rng.choice(["list", "length", "last"])
 
     def make(i):
-        n = [3, 0, 2, 4][i]
+        n = [3, 2, 0, 4][i]
         items = rng.sample(ITEM_POOLS[name], n + 1)
         new, items = items[0], items[1:]
         after = items + [new]
@@ -2167,13 +2733,18 @@ def gen_code_has_duplicates(rng: random.Random) -> Question:
     fn = "all_unique" if inverse else "has_duplicates"
     pool_kind = rng.choice(["numbers", "words"])
     pool = list(range(1, 9)) if pool_kind == "numbers" else rng.sample(FRUITS, 6)
-    cases = []
-    for dup in [False, True, True, False, True]:
-        base = rng.sample(pool, rng.choice([3, 4]))
-        if dup:
-            base = base + [rng.choice(base)]
-            rng.shuffle(base)
-        cases.append(Case(args=[base], ret=(not dup) if inverse else dup))
+    plain, repeats = [], []
+    for length in (5, 3, 4):  # list length must not give the answer away: short and long lists on both sides
+        plain.append(Case(args=[rng.sample(pool, length)], ret=inverse))
+    for length in (3, 5, 4):
+        base = rng.sample(pool, length - 1)
+        base = base + [rng.choice(base)]
+        rng.shuffle(base)
+        repeats.append(Case(args=[base], ret=not inverse))
+    rest = plain[1:] + repeats[1:]
+    rng.shuffle(rest)
+    first_two = [plain[0], repeats[0]] if rng.random() < 0.5 else [repeats[0], plain[0]]
+    cases = first_two + rest
     cases.insert(2, Case(args=[[]], ret=True if inverse else False))
     if inverse:
         solution = f"def {fn}(items):\n    return len(items) == len(set(items))"
@@ -2203,6 +2774,8 @@ def gen_code_type_check(rng: random.Random) -> Question:
     if not any(type(v) is t for v in chosen):
         chosen[rng.randrange(7)] = {str: "Python", list: [1, 2, 3], float: 9.81}[t]
     cases = [Case(args=[v], ret=type(v) is t) for v in chosen]
+    cases.sort(key=lambda c: c.ret is not True)  # a True case first,
+    cases.insert(1, cases.pop(-1))  # then a False case: the two shown examples differ
     solution = f"def {fn}(value):\n    return type(value) == {t.__name__}"
     return code_question(
         topic=TOPIC, difficulty=MEDIUM,
@@ -2226,8 +2799,7 @@ def gen_code_types_loop(rng: random.Random) -> Question:
     return code_question(
         topic=TOPIC, difficulty=MEDIUM,
         prompt="The list `values` holds a mix of data types. Use a loop to print the type of every item, one per line, e.g. `<class 'int'>`.",
-        task=program_task("for value in values:\n    print(type(value))", cases, examples=2,
-                          requires=[(r"\bfor\b", "Use a for loop to visit every item.")]),
+        task=program_task("for value in values:\n    print(type(value))", cases, examples=2),
         explanation="`for value in values:` visits each item in order, and `print(type(value))` shows its type.",
     )
 
@@ -2333,6 +2905,8 @@ def gen_code_count_type(rng: random.Random) -> Question:
     cases = _varied(rng, make, 4)
     cases.insert(2, Case(args=[[]], ret=0))
     cases.append(Case(args=[[True, 1, 1.0, "1"]], ret=sum(1 for x in [True, 1, 1.0, "1"] if type(x) is t)))
+    mixed = ["a", "b", "c", 1, 1, 2.5, True, None]  # 3 strings, 2 ints, 1 float: the three counts all differ
+    cases.append(Case(args=[mixed], ret=sum(1 for x in mixed if type(x) is t)))
     return code_question(
         topic=TOPIC, difficulty=HARD,
         prompt=f"Write a function `{fn}(items)` that returns how many of the items in the list are {label}.{note}",
@@ -2419,4 +2993,64 @@ def gen_code_remove_duplicates(rng: random.Random) -> Question:
         prompt="Write a function `remove_duplicates(items)` that returns a new list with each different item once, keeping the order in which they first appear.",
         task=function_task("remove_duplicates", solution, cases),
         explanation="Start with an empty list, loop over `items`, and `append` an item only if it is not already in the new list. A set would drop the duplicates but lose the order.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_me_sentence(rng: random.Random) -> Question:
+    """The Mini-Challenge f-string, returned from a function."""
+    solution = (
+        "def describe_me(me):\n"
+        '    name = me["name"]\n'
+        '    grade = me["grade"]\n'
+        '    n = len(me["classes"])\n'
+        '    return f"{name} is in grade {grade} and is taking {n} classes."'
+    )
+
+    def make(i):
+        m = me_dict(rng, [3, 4, 2, 5][i])
+        return ((m,), f"{m['name']} is in grade {m['grade']} and is taking {len(m['classes'])} classes."), (m["name"], m["grade"], len(m["classes"]))
+
+    cases = _varied(rng, make, 4)
+    return code_question(
+        topic=TOPIC, difficulty=HARD,
+        prompt=(
+            'Write a function `describe_me(me)` that returns a sentence like `Reid is in grade 11 and is taking 3 classes.` '
+            'from the dictionary `me` (keys "name", "grade" and "classes"). Return it, do not print it.'
+        ),
+        task=function_task("describe_me", solution, cases),
+        explanation='Get the name and grade with their keys and count the classes with `len(me["classes"])`, then build the sentence with an f-string and `return` it.',
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_find_gpa(rng: random.Random) -> Question:
+    """A list of dictionaries: loop, look up a key, and return None (no value) when nobody matches."""
+    solution = (
+        "def find_gpa(students, name):\n"
+        "    for student in students:\n"
+        '        if student["name"] == name:\n'
+        '            return student["gpa"]\n'
+        "    return None"
+    )
+    cases = []
+    for size, where in [(3, 0), (3, 2), (2, 1), (2, None), (3, None)]:
+        people = rng.sample(PEOPLE, size + 1)
+        roster = [{"name": p, "grade": rng.choice([9, 10, 11, 12]), "gpa": round(rng.choice([2.8, 3.1, 3.5, 3.9, 4.0]), 1)} for p in people[:size]]
+        if where is None:
+            cases.append(Case(args=[roster, people[-1]], ret=None))
+        else:
+            cases.append(Case(args=[roster, roster[where]["name"]], ret=roster[where]["gpa"]))
+    rng.shuffle(cases)
+    cases.sort(key=lambda c: c.ret is None)  # hits first, misses last
+    cases.insert(1, cases.pop(-1))  # shown examples: one hit, one miss
+    cases.append(Case(args=[[], "Sam"], ret=None))
+    return code_question(
+        topic=TOPIC, difficulty=HARD,
+        prompt=(
+            'Write a function `find_gpa(students, name)`. `students` is a list of dictionaries like `{"name": "Sam", "grade": 11, "gpa": 3.6}`. '
+            'Return the "gpa" of the student with that name, or `None` if nobody has that name.'
+        ),
+        task=function_task("find_gpa", solution, cases),
+        explanation='Loop over the list; when a dictionary\'s "name" matches, `return` its "gpa" right away. If the loop ends without a match, `return None` (no value).',
     )

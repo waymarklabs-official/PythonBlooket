@@ -135,7 +135,7 @@ export function createQuestionView(q, options = {}) {
 
   const card = el(
     "section",
-    { class: ["q-card", "pop-in", `qv-${qtype}`], tabindex: "-1", "aria-label": `${q.difficulty_label || ""} ${q.topic_name || ""} question`.replace(/\s+/g, " ").trim() },
+    { class: ["q-card", "pop-in", `qv-type-${qtype}`], tabindex: "-1", "aria-label": `${q.difficulty_label || ""} ${q.topic_name || ""} question`.replace(/\s+/g, " ").trim() },
     meta,
     timerSlot,
     el("div", { class: "q-prompt", html: renderInlineCode(q.prompt) }),
@@ -583,8 +583,10 @@ function renderRunResult(panel, res, { final = false, solution = null } = {}) {
     let message = String(r.message || "");
     if (status === "ok") {
       const all = total > 0 && passed === total;
-      if (final) tone = r.correct ? "ok" : "bad";
-      else {
+      if (final) {
+        tone = r.correct ? "ok" : "bad";
+        if (!r.correct) icon = passed > 0 ? "🤔" : "❌";
+      } else {
         tone = all ? "ok" : "warn";
         if (!all) icon = "🤔";
         message = all
@@ -690,6 +692,9 @@ function buildCode(host) {
       res = await o.onRun(editor.getValue());
     } catch (err) {
       res = { status: "error", message: `Couldn't run your code: ${err && err.message ? err.message : "network problem"}. Try again.`, cases: [] };
+    }
+    if (!res || typeof res !== "object" || (!res.status && !Array.isArray(res.cases))) {
+      res = { status: "error", message: (res && res.error) || "Couldn't run your code. Try again.", cases: [] };
     }
     running = false;
     runBtn.replaceChildren(el("span", { "aria-hidden": "true", text: "▶ " }), "Run examples");

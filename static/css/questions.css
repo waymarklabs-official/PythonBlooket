@@ -81,6 +81,7 @@
 
 .qv-blanks-code .code-body {
   white-space: pre;
+  font-variant-ligatures: none;
 }
 
 .qv-blank {
@@ -773,8 +774,11 @@ html.qv-bar-open body {
   margin-top: 14px;
 }
 
-.qv-solution .code-block {
+.qv-solution .code-block,
+.qv-key .code-block {
   margin-bottom: 0;
+  /* show it the way the player types it: "<=" stays two characters */
+  font-variant-ligatures: none;
 }
 
 .qv-score-line {
