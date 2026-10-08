@@ -74,7 +74,7 @@ questions are run through the real sandbox, and variety / determinism / balance 
 * never sees the hidden tests.
 
 That is defence in depth for a classroom network, **not** a guarantee against a determined attacker – only host on a network you
-trust. To switch typed-code questions off completely run `PYBLOOKET_CODE=off python app.py` (the typed blanks and matching
+trust. (On Windows the CPU/memory limits are not available, so only the hard timeout protects the server.) To switch typed-code questions off completely run `PYBLOOKET_CODE=off python app.py` (the typed blanks and matching
 questions keep working; no student code is ever executed).
 
 ## Development

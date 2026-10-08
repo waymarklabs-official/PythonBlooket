@@ -43,10 +43,17 @@ async function request(url, { timeout = REQUEST_TIMEOUT_MS, ...options } = {}) {
   return data;
 }
 
-/** -> {topics: [{id, name, icon, description, generators}], difficulties: [{id, label, points}]} */
+/** -> {topics: [{id, name, icon, description, generators}], difficulties: [{id, label, points}], qtypes, type_presets, code_enabled} */
 export async function fetchTopics() {
   const data = await request("/api/topics");
-  return { topics: data.topics || [], difficulties: data.difficulties || [] };
+  return {
+    ...data,
+    topics: data.topics || [],
+    difficulties: data.difficulties || [],
+    qtypes: data.qtypes || [],
+    type_presets: data.type_presets || {},
+    code_enabled: data.code_enabled !== false,
+  };
 }
 
 /**

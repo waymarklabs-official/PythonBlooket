@@ -147,7 +147,7 @@ function recordHighScore(modeId, entry) {
 // Catalogue (topics, difficulties and question types from the server)
 // ---------------------------------------------------------------------------
 
-/** GET /api/topics: the whole payload (fetchTopics() in api.js only hands on topics and difficulties). */
+/** GET /api/topics: the whole payload. */
 async function fetchCatalog() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), CATALOG_TIMEOUT_MS);
