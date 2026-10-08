@@ -687,6 +687,11 @@
   image-rendering: pixelated;
 }
 
+.hs-joincard:not(:has(.hs-warn)) .hs-qr-img {
+  width: calc(var(--hs-u) * 10.5);
+  height: calc(var(--hs-u) * 10.5);
+}
+
 .hs-qr-cap {
   font-weight: 900;
   font-size: 0.85em;
@@ -858,6 +863,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hs-tile-name.is-long {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.78em;
+  line-height: 1.12;
 }
 
 .hs-kick {
@@ -1108,6 +1123,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--hs-gap);
   align-items: start;
 }
@@ -1126,6 +1142,7 @@
   flex-direction: column;
   gap: calc(var(--hs-u) * 0.7);
   min-height: 0;
+  max-height: 100%;
   overflow: auto;
   color: var(--hs-ink);
 }
@@ -1139,6 +1156,7 @@
   flex-direction: column;
   justify-content: flex-start;
   min-height: 0;
+  max-height: 100%;
   min-width: 0;
 }
 
@@ -1356,7 +1374,7 @@
 
 .hs-task-title {
   font-size: 1.4em;
-  color: #7a4b00;
+  color: var(--hs-ink);
 }
 
 .hs-letter {
@@ -1546,6 +1564,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: var(--hs-gap);
 }
@@ -1595,8 +1614,13 @@
   font-size: 1.15em;
 }
 
-.hs-reveal.no-code.hs-q-choice .hs-choices-reveal {
+.hs-reveal.hs-q-choice .hs-choices-reveal {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* the question's code stays readable but leaves room for the answers below it */
+.hs-reveal.has-code.hs-q-choice .hs-revealcard .hs-code.hs-code-lg {
+  font-size: 1.1em;
 }
 
 .hs-choices-reveal .hs-choice {
@@ -1740,7 +1764,7 @@
 
 .hs-side-title {
   font-size: 1.4em;
-  color: #7a4b00;
+  color: var(--hs-ink);
   margin-bottom: 0.5em;
 }
 
@@ -2180,7 +2204,9 @@
   flex: none;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.4em;
+  min-width: 9.6em; /* same width with or without a streak chip, so every bar track lines up */
 }
 
 .hs-chip {
@@ -2353,12 +2379,10 @@
 .hs-fin-title {
   margin-bottom: 0.5em;
   font-size: 1.5em;
-  color: #7a4b00;
+  color: var(--hs-ink);
 }
 
 .hs-table-wrap {
-  max-height: calc(var(--hs-u) * 22);
-  overflow: auto;
   border-radius: 12px;
 }
 
@@ -2369,8 +2393,6 @@
 }
 
 .hs-table th {
-  position: sticky;
-  top: 0;
   padding: 0.4em 0.7em;
   background: var(--c-card-2);
   color: var(--hs-muted);

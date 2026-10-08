@@ -115,6 +115,8 @@ let current = null;
 const fmt = (n) => Number(n || 0).toLocaleString();
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const pct = (num, den) => (den > 0 ? Math.round((100 * num) / den) : 0);
+/** A medal for the top three, but not when nobody has scored yet (everybody would be "first"). */
+const rankLabel = (p) => (p.score > 0 && MEDALS[p.rank]) || String(p.rank);
 const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
 
 /** An avatar circle whose size scales with the projector font size (k = multiples of the base unit). */
@@ -196,6 +198,17 @@ function friendly(err) {
 
 function kbd(text) {
   return el("kbd", { class: "hs-kbd only-mouse", "aria-hidden": "true", text });
+}
+
+/** Shrink the text inside `box` a step at a time (never below `min` x) until it no longer has to scroll. */
+function fitBox(box, min = 0.7) {
+  if (!box || !box.isConnected) return;
+  box.style.removeProperty("font-size");
+  let scale = 1;
+  while (box.scrollHeight > box.clientHeight + 1 && scale > min) {
+    scale = Math.max(min, scale - 0.05);
+    box.style.fontSize = `${scale}em`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -926,12 +939,18 @@ class HostGame {
     });
     this.onKey = this.onKey.bind(this);
     this.onFrame = this.onFrame.bind(this);
+    this.onResize = () => {
+      window.clearTimeout(this.resizeTimer);
+      this.resizeTimer = window.setTimeout(() => this.alive && this.fit(), 120);
+    };
   }
 
   start() {
     this.env.show(this.root, { focus: false });
     document.addEventListener("keydown", this.onKey);
     document.addEventListener("fullscreenchange", syncFullscreenButtons);
+    window.addEventListener("resize", this.onResize);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => this.alive && this.fit());
     this.raf = requestAnimationFrame(this.onFrame);
     this.poller.push(this.initial);
     this.poller.start();
@@ -944,6 +963,7 @@ class HostGame {
     cancelAnimationFrame(this.raf);
     document.removeEventListener("keydown", this.onKey);
     document.removeEventListener("fullscreenchange", syncFullscreenButtons);
+    window.removeEventListener("resize", this.onResize);
     if (this.view) this.view.destroy();
     this.view = null;
     if (current === this) current = null;
@@ -1045,11 +1065,17 @@ class HostGame {
       if (prev) this.view.el.classList.add("hs-view-in");
       this.stage.scrollTop = 0;
       window.scrollTo(0, 0);
+      this.fit();
       this.announce(this.view.announce || "");
       this.prevPhase = prev ? prev.phase : null;
     } else {
       this.view.update(state);
     }
+  }
+
+  /** Let a view shrink its text boxes so everything fits the projector without scrolling. */
+  fit() {
+    if (this.view && this.view.fit) this.view.fit();
   }
 
   onFrame() {
@@ -1194,7 +1220,7 @@ function playerGrid(game, { kickable = true } = {}) {
           },
         })
       : null;
-    return el("li", { class: "hs-tile pop-in", title: p.name, dataset: { id: p.id } }, hsBlook(p.avatar, 2.2), el("span", { class: "hs-tile-name", text: p.name }), kick);
+    return el("li", { class: "hs-tile pop-in", title: p.name, dataset: { id: p.id } }, hsBlook(p.avatar, 2.2), el("span", { class: ["hs-tile-name", p.name.length > 9 && "is-long"], text: p.name }), kick);
   }
 
   return {
@@ -1485,6 +1511,9 @@ function questionView(game, state) {
     el: screen,
     announce: `Question ${state.question_index + 1} of ${state.question_total}. ${q.prompt}`,
     update,
+    fit() {
+      for (const box of screen.querySelectorAll(".hs-qcard, .hs-taskcard")) fitBox(box);
+    },
     tick() {
       const rem = clock.remaining(deadline);
       timer.set(rem, total);
@@ -1517,7 +1546,7 @@ function leaderboardList(players, { limit = 5, showDelta = true, animate = true 
       el(
         "li",
         { class: ["hs-board-row", `hs-rank-${Math.min(p.rank, 4)}`], style: { "--i": i, "--share": clamp(p.score / maxScore, 0.04, 1) } },
-        el("span", { class: "hs-board-rank", text: MEDALS[p.rank] || String(p.rank) }),
+        el("span", { class: "hs-board-rank", text: rankLabel(p) }),
         hsBlook(p.avatar, 1.9),
         el("span", { class: "hs-board-name", text: p.name }),
         showDelta ? el("span", { class: ["hs-delta", !p.delta && "is-zero"], text: p.delta ? `+${fmt(p.delta)}` : "+0" }) : null,
@@ -1640,6 +1669,9 @@ function revealView(game, state) {
   return {
     el: screen,
     announce: `Answer revealed. ${rev.correct_count} of ${rev.total} got it right.`,
+    fit() {
+      fitBox(left);
+    },
     update(s) {
       nextAt = s.next_at;
     },
@@ -1728,7 +1760,7 @@ function rushView(game, state, prev) {
       row.style.setProperty("--i", String(i));
       row.style.setProperty("--share", String(clamp(p.score / maxScore, p.score > 0 ? 0.03 : 0, 1)));
       row.className = `hs-rush-row hs-rank-${Math.min(p.rank, 4)}`;
-      parts.rank.textContent = MEDALS[p.rank] || String(p.rank);
+      parts.rank.textContent = rankLabel(p);
       parts.name.textContent = p.name;
       const from = parts.score;
       if (from !== p.score) {
@@ -1838,7 +1870,7 @@ function finishedView(game, state, prev) {
     el(
       "tr",
       { class: p.rank <= 3 ? `hs-rank-${p.rank}` : null },
-      el("td", { class: "hs-col-rank", text: MEDALS[p.rank] || String(p.rank) }),
+      el("td", { class: "hs-col-rank", text: rankLabel(p) }),
       el("td", { class: "hs-col-name" }, el("span", { class: "hs-name-cell" }, hsBlook(p.avatar, 1.7), el("span", { text: p.name }))),
       el("td", { class: "hs-col-num", text: fmt(p.score) }),
       el("td", { class: "hs-col-num", text: `${p.correct}/${p.answered}` }),
