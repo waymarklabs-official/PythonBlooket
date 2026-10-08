@@ -1,13 +1,18 @@
-"""Question generators for the "functions" topic (Functions).
+"""Question generators for the "functions" topic (CSF.2.L: Functions).
 
-Covers return values and the implicit ``None`` of a function without
-``return``, ``print`` vs ``return``, positional / keyword / default arguments,
-calling with the wrong number of arguments, local vs global scope (``global``,
-shadowing, ``UnboundLocalError``), ``*args`` / ``**kwargs``, returning several
-values as a tuple, early ``return``, functions as values, ``lambda``, call
-chains such as ``f(g(x))``, closures with ``nonlocal``, default values being
-evaluated only once (including the mutable-default trap), and functions that
-mutate their arguments.
+Everything follows the lesson and nothing more: ``def`` and indentation, defining a function does
+not run it (you must call it), ``print()`` and ``input()`` are functions too, parameters (the
+variables in the parentheses of the ``def`` line) versus arguments (the values you pass when you
+call it), ``return`` versus ``print`` (``add(1, 1)`` computes 2 but shows nothing, while
+``print("Total:", add(1, 1))`` shows ``Total: 2``), why functions matter, the Mini-Challenge trio
+``fahrenheit_to_celsius(f)`` / ``square_area(side)`` / ``average(a, b, c)`` and the Python Bingo
+functions (``greet(name)``, ``add(a, b)``, ``is_even(n)``, ``square_list(lst)`` with a loop,
+``max_of_three(a, b, c)`` without ``max()``).
+
+Wherever an answer depends on running code it is computed by *running* the snippet
+(``output_question`` / ``_out``), and typed code answers are checked by the sandbox against hidden
+tests, so the questions are correct by construction.  Nothing here uses default arguments, ``*args``,
+lambda, closures, recursion or other ideas the lesson does not teach.
 """
 
 from __future__ import annotations
@@ -17,1975 +22,1646 @@ import random
 from ..base import (
     EASY,
     HARD,
-    MAX_CHOICE_LINE_LEN,
-    MAX_CHOICE_LINES,
     MEDIUM,
-    NAMES,
     NOTHING_PRINTED,
     GenerationError,
     Question,
+    blanks_question,
     build_question,
+    code_question,
+    display_output,
     error_choice,
+    expression_task,
+    function_task,
     generator,
-    int_distractors,
+    match_question,
     output_question,
+    program_task,
     run_code,
-    which_expression_question,
 )
+from ..spec import Blank, Case, blank_mark
 
 TOPIC = "functions"
-PRINT = "What does this code print?"
-PRINT_OR_ERROR = "What is printed, or which error is raised?"
-BLANK = "____"
-TYPE_ERROR = error_choice("TypeError")
-NAME_ERROR = error_choice("NameError")
-UNBOUND = error_choice("UnboundLocalError")
-VALUE_ERROR = error_choice("ValueError")
-MAX_SNIPPET_LINES = 14
+
+# Names and wording copied from the lesson (greet_person("Sarah"), greet_person("Ben"), add(1, 1) ...).
+PEOPLE = ["Sarah", "Ben", "Ava", "Cara", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivy", "Jon", "Sam", "Ada"]
+GREET_FUNCS = ["greet_person", "greet_person", "greet_player", "greet_student", "welcome_player"]
+NO_ARG_FUNCS = [
+    ("greet", "Hello world"),
+    ("greet", "Hello world"),
+    ("say_hi", "Hi there!"),
+    ("start_game", "Game on!"),
+    ("show_menu", "Main menu"),
+    ("welcome", "Welcome to class"),
+    ("say_goodbye", "Goodbye!"),
+    ("show_score", "Score: 100"),
+    ("show_title", "Python Quest"),
+    ("start_level", "Level 1 begins"),
+]
+# "NAME" marks where the player's name goes (turned into {name} inside an f-string).
+GREETINGS = ["Hello, NAME", "Hello, NAME", "Welcome, NAME!", "Hi NAME", "Hey NAME, ready?"]
+# (function name, return expression) -- the lesson's add(a, b) and math_tools' multiply(a, b).
+MATH = [("add", "a + b"), ("add", "a + b"), ("multiply", "a * b"), ("subtract", "a - b")]
+
+PARAM_DEF = "A variable in the parentheses of the def line"
+ARG_DEF = "A value you pass in when you call the function"
 
 
-# --------------------------------------------------------------------------
-# Private helpers
-# --------------------------------------------------------------------------
+def _fmt(template: str, name: str) -> str:
+    """Greeting text for one person."""
+    return template.replace("NAME", name)
 
 
-def _prog(*blocks: str) -> str:
-    """Join top-level blocks (defs, main code) with two blank lines, as PEP 8 asks."""
-    code = "\n\n\n".join(b.strip("\n") for b in blocks)
-    if len(code.split("\n")) > MAX_SNIPPET_LINES:
-        raise GenerationError(f"snippet too long:\n{code}")
-    return code
+def _fstr(template: str) -> str:
+    """The f-string source for a greeting template, e.g. f"Hello, {name}"."""
+    return 'f"' + template.replace("NAME", "{name}") + '"'
 
 
-def _run(code: str) -> str:
-    """The choice text for what ``code`` prints, or the error it raises."""
-    res = run_code(code)
-    if res.error:
-        return error_choice(res.error)
-    return res.output if res.output else NOTHING_PRINTED
+def _out(code: str) -> str:
+    """What a snippet prints (as an answer choice): output, nothing, or the error it raises."""
+    res = run_code(code.strip("\n"))
+    return error_choice(res.error) if res.error else display_output(res.output)
 
 
-def _fits(choice: str) -> bool:
-    lines = [line.rstrip() for line in choice.strip("\n").split("\n")]
-    return (
-        bool(choice.strip())
-        and len(lines) <= MAX_CHOICE_LINES
-        and all(len(line) <= MAX_CHOICE_LINE_LEN for line in lines)
+def _apply(expr: str, **names) -> object:
+    """Evaluate one of our own tiny arithmetic expressions."""
+    return eval(expr, {"__builtins__": {}}, names)
+
+
+def _two_ints(rng: random.Random) -> tuple[int, int]:
+    a, b = rng.sample(range(2, 10), 2)
+    return a, b
+
+
+def _triple_div3(rng: random.Random, lo: int, hi: int) -> tuple[int, int, int]:
+    """Three distinct numbers whose sum is a multiple of 3 (so their average prints tidily)."""
+    while True:
+        t = tuple(rng.sample(range(lo, hi), 3))
+        if sum(t) % 3 == 0:
+            return t  # type: ignore[return-value]
+
+
+# ==========================================================================
+# CHOICE -- EASY (vocabulary and one-line results, like the Canvas quiz)
+# ==========================================================================
+
+
+@generator(TOPIC, EASY)
+def gen_def_keyword(rng: random.Random) -> Question:
+    """Which keyword defines a function? (concept wording, or read it off a snippet)"""
+    if rng.random() < 0.5:
+        fn, msg = rng.choice(NO_ARG_FUNCS)
+        return build_question(
+            topic=TOPIC,
+            difficulty=EASY,
+            prompt="In this code, which keyword tells Python you are defining a function?",
+            code=f'def {fn}():\n    print("{msg}")',
+            correct="def",
+            distractors=[fn, "print", rng.choice(["function", "define", "func"])],
+            explanation="You use the keyword `def` to define a function. The name after it (and `print`) are not keywords for defining.",
+            rng=rng,
+        )
+    prompt = rng.choice(
+        [
+            "Which keyword is used to define a function in Python?",
+            "A function definition starts with which keyword?",
+            "Which keyword do you use to create your own function?",
+        ]
     )
-
-
-def _usable(distractors) -> list[str]:
-    """Stringify distractors and drop any that would not fit on a choice button."""
-    out = []
-    for d in distractors:
-        if d is None:
-            continue
-        d = str(d)
-        if d == "":
-            d = NOTHING_PRINTED
-        if _fits(d):
-            out.append(d)
-    return out
-
-
-def _output(
-    code: str,
-    difficulty: int,
-    distractors,
-    explanation: str,
-    rng: random.Random,
-    *,
-    prompt: str = PRINT,
-    allow_error: bool = False,
-) -> Question:
-    return output_question(
-        topic=TOPIC,
-        difficulty=difficulty,
-        code=code,
-        distractors=_usable(distractors),
-        explanation=explanation,
-        rng=rng,
-        prompt=prompt,
-        allow_error=allow_error,
-    )
-
-
-def _choice(
-    *,
-    difficulty: int,
-    prompt: str,
-    code: str | None,
-    correct: str,
-    distractors,
-    explanation: str,
-    rng: random.Random,
-) -> Question:
     return build_question(
         topic=TOPIC,
-        difficulty=difficulty,
-        prompt=prompt,
-        correct=str(correct),
-        distractors=_usable(distractors),
-        explanation=explanation,
-        rng=rng,
-        code=code,
-    )
-
-
-def _nums(cands, correct: int, rng: random.Random) -> list:
-    """Misconception-based candidates first, then nearby integers as a fallback."""
-    return [*cands, *int_distractors(correct, rng)]
-
-
-def _sub(src: str, n) -> str:
-    """``src`` with its ``{p}`` placeholder replaced by the number ``n``."""
-    return src.format(p=str(n) if n >= 0 else f"({n})")
-
-
-def _calc(src: str, n):
-    """Evaluate a tiny arithmetic body such as ``"{p} * 2"`` for ``n``."""
-    return eval(src.format(p=f"({n})"), {"__builtins__": {}})  # noqa: S307 - our own strings
-
-
-def _lines(*parts) -> str:
-    return "\n".join(str(p) for p in parts)
-
-
-_PARAMS = ["n", "x", "num", "value"]
-
-# (name, body with {p} for the parameter, [plausible misreadings of the body])
-_ONE_ARG = [
-    ("double", "{p} * 2", ["{p} + 2", "{p} ** 2"]),
-    ("triple", "{p} * 3", ["{p} + 3", "{p} ** 3"]),
-    ("square", "{p} * {p}", ["{p} * 2", "{p} + 2"]),
-    ("add_ten", "{p} + 10", ["{p} * 10", "{p} + 1"]),
-    ("halve", "{p} // 2", ["{p} / 2", "{p} * 2"]),
-    ("minus_three", "{p} - 3", ["3 - {p}", "{p} + 3"]),
-]
-
-# Single-parameter helpers used for call chains: (name, body using n).
-_STEPS = [
-    ("double", "n * 2"),
-    ("add_one", "n + 1"),
-    ("square", "n * n"),
-    ("add_three", "n + 3"),
-    ("halve", "n // 2"),
-    ("negate", "-n"),
-]
-
-
-def _step_fn(body: str):
-    return lambda n: eval(body, {"__builtins__": {}}, {"n": n})  # noqa: S307
-
-
-# ==========================================================================
-# EASY
-# ==========================================================================
-
-
-@generator(TOPIC, EASY)
-def gen_return_value(rng: random.Random) -> Question:
-    """A call is replaced by the value its ``return`` sends back."""
-    shape = rng.choice(["direct", "stored", "two_calls", "nested", "order", "divide", "repeat"])
-    p = rng.choice(_PARAMS)
-    if shape in ("direct", "stored", "two_calls", "nested"):
-        name, body, (w1, w2) = rng.choice(_ONE_ARG)
-        func = f"def {name}({p}):\n    return {body.format(p=p)}"
-        a = rng.randint(2, 5) if shape == "nested" else rng.randint(2, 9)
-        fa = _calc(body, a)
-        if shape == "direct":
-            main = f"print({name}({a}))"
-            cands = [_calc(w1, a), a, _calc(w2, a), "None"]
-            why = (
-                f"Calling `{name}({a})` runs the body with `{p}` = {a}. `return` sends back "
-                f"{_sub(body, a)} = {fa}, and `print` shows that value."
-            )
-        elif shape == "stored":
-            k = rng.randint(1, 5)
-            main = f"result = {name}({a})\nprint(result + {k})"
-            cands = [fa, _calc(w1, a) + k, a + k, _calc(w2, a) + k]
-            why = (
-                f"`{name}({a})` returns {fa}, so `result` holds {fa} and "
-                f"`result + {k}` is {fa + k}."
-            )
-        elif shape == "two_calls":
-            b = rng.choice([v for v in range(2, 10) if v != a])
-            fb = _calc(body, b)
-            main = f"print({name}({a}) + {name}({b}))"
-            cands = [fa, _calc(w1, a) + _calc(w1, b), a + b, fb, f"{fa} {fb}"]
-            why = (
-                f"Each call is replaced by its return value: `{name}({a})` gives {fa} and "
-                f"`{name}({b})` gives {fb}, so the sum is {fa + fb}."
-            )
-        else:
-            ffa = _calc(body, fa)
-            main = f"print({name}({name}({a})))"
-            cands = [fa, _calc(w1, _calc(w1, a)), _calc(w1, fa), a, fa * 2]
-            why = (
-                f"The inner call runs first: `{name}({a})` returns {fa}. That value is "
-                f"passed to the outer call, and `{name}({fa})` returns {ffa}."
-            )
-        return _output(_prog(func, main), EASY, _nums(cands, 0, rng), why, rng)
-
-    if shape == "order":
-        fname, p1, p2 = rng.choice(
-            [("difference", "big", "small"), ("subtract", "a", "b"), ("gap", "first", "second")]
-        )
-        x, y = rng.sample(range(2, 16), 2)
-        code = _prog(f"def {fname}({p1}, {p2}):\n    return {p1} - {p2}", f"print({fname}({x}, {y}))")
-        cands = [y - x, x + y, "None", x, y]
-        why = (
-            f"Arguments are matched to parameters by position: `{p1}` gets {x} and `{p2}` "
-            f"gets {y}, so the function returns {x} - {y} = {x - y}."
-        )
-    elif shape == "divide":
-        b = rng.randint(2, 5)
-        q = rng.randint(2, 6)
-        a = b * q
-        fname = rng.choice(["divide", "share", "per_person"])
-        code = _prog(f"def {fname}(total, people):\n    return total / people", f"print({fname}({a}, {b}))")
-        cands = [q, b / a, a * b, "None"]
-        why = (
-            f"`{fname}({a}, {b})` returns `{a} / {b}`. The `/` operator always produces a "
-            f"float, so the returned value is {a / b}, not {q}."
-        )
-    else:
-        word = rng.choice(["ha", "na", "go", "hey", "ho", "la", "boo"])
-        times = rng.randint(2, 4)
-        fname = rng.choice(["repeat", "echo"])
-        code = _prog(
-            f"def {fname}(word, times):\n    return word * times", f'print({fname}("{word}", {times}))'
-        )
-        cands = [f"{word}{times}", " ".join([word] * times), word * (times + 1), word]
-        why = (
-            f'`word * times` repeats the string, so `{fname}("{word}", {times})` returns '
-            f'"{word}" {times} times in a row: {word * times}.'
-        )
-    return _output(code, EASY, cands, why, rng)
-
-
-@generator(TOPIC, EASY)
-def gen_implicit_none(rng: random.Random) -> Question:
-    """A function without ``return`` gives back ``None``."""
-    shape = rng.choice(["print_inside", "print_inside", "no_return", "use_result", "side_effect", "type"])
-    prompt, allow_error = PRINT, False
-    if shape == "print_inside":
-        if rng.random() < 0.5:
-            name = rng.choice(NAMES)
-            word = rng.choice(["Hello,", "Hi", "Welcome", "Hey"])
-            fname = "greet"
-            code = _prog(f'def greet(name):\n    print("{word}", name)', f'print(greet("{name}"))')
-            shown = f"{word} {name}"
-        else:
-            n = rng.randint(2, 9)
-            fname = rng.choice(["show_double", "print_double"])
-            code = _prog(f"def {fname}(n):\n    print(n * 2)", f"print({fname}({n}))")
-            shown = str(n * 2)
-        distractors = [shown, f"{shown}\n{shown}", "None", f"None\n{shown}"]
-        why = (
-            f"`{fname}` prints `{shown}` itself, but it has no `return`, so the call evaluates "
-            f"to `None` and the outer `print` then shows `None`."
-        )
-    elif shape == "no_return":
-        a, b = rng.randint(2, 9), rng.randint(2, 9)
-        var = rng.choice(["total", "result", "answer"])
-        fname = rng.choice(["add", "add_numbers", "get_sum"])
-        code = _prog(f"def {fname}(a, b):\n    {var} = a + b", f"print({fname}({a}, {b}))")
-        prompt = PRINT_OR_ERROR
-        distractors = [a + b, NOTHING_PRINTED, NAME_ERROR, "0"]
-        why = (
-            f"`{fname}` computes {a + b} and stores it in the local variable `{var}`, but never "
-            "returns it. A function that ends without `return` returns `None`."
-        )
-    elif shape == "use_result":
-        name, body, _ = rng.choice(_ONE_ARG)
-        a = rng.randint(2, 9)
-        k = rng.randint(1, 5)
-        fa = _calc(body, a)
-        code = _prog(
-            f"def {name}(n):\n    result = {body.format(p='n')}",
-            f"answer = {name}({a})\nprint(answer + {k})",
-        )
-        prompt, allow_error = PRINT_OR_ERROR, True
-        distractors = [fa + k, "None", a + k, NAME_ERROR]
-        why = (
-            f"`{name}` never returns `result`, so `answer` is `None`. Adding a number to "
-            f"`None` (`None + {k}`) raises a `TypeError`."
-        )
-    elif shape == "side_effect":
-        msg = rng.choice(["Hi!", "Go!", "Done!", "Ready?", "Hooray!"])
-        fname = rng.choice(["say_hi", "cheer", "announce"])
-        var = rng.choice(["result", "value", "out"])
-        code = _prog(f'def {fname}():\n    print("{msg}")', f"{var} = {fname}()\nprint({var})")
-        distractors = ["None", msg, f"{msg}\n{msg}", f"None\n{msg}"]
-        why = (
-            f"`{var} = {fname}()` still runs the function, which prints {msg}. "
-            f"The function has no `return`, so `{var}` is `None`, which is printed next."
-        )
-    else:
-        n = rng.randint(2, 9)
-        fname = rng.choice(["show_double", "print_double"])
-        code = _prog(f"def {fname}(n):\n    print(n * 2)", f"result = {fname}({n})\nprint(type(result))")
-        distractors = [
-            f"{n * 2}\n<class 'int'>",
-            "<class 'NoneType'>",
-            "<class 'int'>",
-            f"{n * 2}\n<class 'function'>",
-        ]
-        why = (
-            f"Calling `{fname}({n})` prints {n * 2}, but the function returns nothing, so "
-            "`result` is `None`, whose type is `NoneType`."
-        )
-    return _output(code, EASY, distractors, why, rng, prompt=prompt, allow_error=allow_error)
-
-
-@generator(TOPIC, EASY)
-def gen_print_vs_return(rng: random.Random) -> Question:
-    """A returned value is not printed unless you print it; return ends the function."""
-    shape = rng.choice(["discarded", "discarded", "prints_and_returns", "after_return"])
-    if shape == "discarded":
-        name, body, _ = rng.choice(_ONE_ARG)
-        a, b = rng.sample(range(2, 10), 2)
-        while _calc(body, a) == _calc(body, b):  # halve(4) == halve(5)
-            b = rng.choice([v for v in range(2, 10) if v != a])
-        fa, fb = _calc(body, a), _calc(body, b)
-        func = f"def {name}(n):\n    return {body.format(p='n')}"
-        if rng.random() < 0.5:
-            msg = rng.choice(["done", "finished", "bye"])
-            code = _prog(func, f'{name}({a})\nprint("{msg}")')
-            distractors = [f"{fa}\n{msg}", f"{msg}\n{fa}", fa, NOTHING_PRINTED]
-        else:
-            code = _prog(func, f"{name}({a})\nprint({name}({b}))")
-            distractors = [f"{fa}\n{fb}", fa, f"{fb}\n{fa}", f"{fb}\n{fb}"]
-        why = (
-            f"The bare call `{name}({a})` returns {fa}, but nothing prints or stores it, so the "
-            "value is simply thrown away. `return` gives a value back; only `print` shows it."
-        )
-    elif shape == "prints_and_returns":
-        name, body, _ = rng.choice(_ONE_ARG)
-        a = rng.randint(2, 9)
-        fa = _calc(body, a)
-        var = rng.choice(["result", "answer", "y"])
-        code = _prog(
-            f"def {name}(n):\n    print(n)\n    return {body.format(p='n')}",
-            f"{var} = {name}({a})\nprint({var})",
-        )
-        distractors = [fa, f"{fa}\n{a}", f"{a}\n{a}", f"{fa}\n{fa}", a]
-        why = (
-            f"Calling `{name}({a})` first runs `print(n)`, showing {a}, then returns {fa}. "
-            f"That returned value is stored in `{var}` and printed on the next line."
-        )
-    else:
-        a, b = rng.randint(2, 9), rng.randint(2, 9)
-        msg = rng.choice(["calculated", "Done!", "finished"])
-        fname, op = rng.choice([("get_total", "+"), ("get_product", "*"), ("combine", "+")])
-        val = a + b if op == "+" else a * b
-        code = _prog(
-            f'def {fname}(a, b):\n    return a {op} b\n    print("{msg}")', f"print({fname}({a}, {b}))"
-        )
-        distractors = [f"{msg}\n{val}", f"{val}\n{msg}", msg, "None"]
-        why = (
-            f"`return` ends the function immediately, so the `print(\"{msg}\")` line after it "
-            f"never runs. Only the returned value {val} is printed."
-        )
-    return _output(code, EASY, distractors, why, rng)
-
-
-@generator(TOPIC, EASY)
-def gen_default_param(rng: random.Random) -> Question:
-    """A parameter with a default value can be left out of the call."""
-    shape = rng.choice(["power", "greet", "step"])
-    if shape == "power":
-        default = rng.choice([2, 2, 3])
-        a = rng.randint(2, 5) if default == 2 else rng.randint(2, 4)
-        b = rng.randint(2, 4)
-        e = rng.choice([x for x in (2, 3, 4) if x != default and b ** x <= 100])
-        code = _prog(
-            f"def power(base, exp={default}):\n    return base ** exp",
-            f"print(power({a}), power({b}, {e}))",
-        )
-        distractors = [
-            f"{a ** default} {b ** default}",
-            TYPE_ERROR,
-            f"{a * default} {b * e}",
-            f"{a} {b ** e}",
-            f"{a ** default} {e ** b}",
-        ]
-        why = (
-            f"`power({a})` leaves out `exp`, so its default {default} is used: {a} ** {default} = "
-            f"{a ** default}. `power({b}, {e})` passes `exp` explicitly, replacing the default: "
-            f"{b} ** {e} = {b ** e}."
-        )
-    elif shape == "greet":
-        default = rng.choice(["Hello", "Hi", "Welcome"])
-        other = rng.choice([g for g in ["Hey", "Bye", "Good luck", "Howdy"] if g != default])
-        n1, n2 = rng.sample(NAMES, 2)
-        code = _prog(
-            f'def greet(name, greeting="{default}"):\n    return greeting + ", " + name + "!"',
-            f'print(greet("{n1}"))\nprint(greet("{n2}", "{other}"))',
-        )
-        distractors = [
-            f"{default}, {n1}!\n{default}, {n2}!",
-            TYPE_ERROR,
-            f"{default}, {n1}!\n{n2}, {other}!",
-            f"{n1}, {default}!\n{n2}, {other}!",
-        ]
-        why = (
-            f'The first call leaves out `greeting`, so it uses the default "{default}". The '
-            f'second call passes "{other}", which replaces the default for that call only.'
-        )
-    else:
-        default = rng.choice([1, 1, 2])
-        start = rng.randint(3, 12)
-        step = rng.choice([s for s in (3, 4, 5, 10) if s != default])
-        fname = rng.choice(["count_up", "move", "advance"])
-        code = _prog(
-            f"def {fname}(start, step={default}):\n    return start + step",
-            f"print({fname}({start}), {fname}({start}, {step}))",
-        )
-        distractors = [
-            f"{start + default} {start + default}",
-            TYPE_ERROR,
-            f"{start} {start + step}",
-            f"{start + default} {start + step + default}",
-            f"{start + default} {step + default}",
-        ]
-        why = (
-            f"`{fname}({start})` uses the default `step={default}`, giving {start + default}. "
-            f"`{fname}({start}, {step})` passes `step` explicitly, so it gives {start + step}."
-        )
-    return _output(code, EASY, distractors, why, rng, prompt=PRINT_OR_ERROR)
-
-
-@generator(TOPIC, EASY)
-def gen_keyword_args(rng: random.Random) -> Question:
-    """Keyword arguments are matched by name, not by position."""
-    shape = rng.choice(["subtract", "subtract", "describe", "divide", "mixed"])
-    if shape in ("subtract", "mixed"):
-        fname, p1, p2 = rng.choice(
-            [("subtract", "a", "b"), ("difference", "first", "second"), ("take_away", "start", "amount")]
-        )
-        x, y = rng.sample(range(2, 20), 2)
-        func = f"def {fname}({p1}, {p2}):\n    return {p1} - {p2}"
-        if shape == "subtract":
-            code = _prog(func, f"print({fname}({p2}={x}, {p1}={y}))")
-            distractors = [x - y, TYPE_ERROR, x + y, NAME_ERROR]
-            why = (
-                f"Keyword arguments are matched by name, not position: `{p1}` is {y} and `{p2}` "
-                f"is {x}, so the function returns {y} - {x} = {y - x}."
-            )
-        else:
-            code = _prog(func, f"print({fname}({x}, {p2}={y}))")
-            distractors = [y - x, TYPE_ERROR, x + y, NAME_ERROR]
-            why = (
-                f"The positional argument {x} fills the first parameter `{p1}`, and `{p2}={y}` is "
-                f"matched by name, so the function returns {x} - {y} = {x - y}."
-            )
-    elif shape == "describe":
-        name = rng.choice(NAMES)
-        age = rng.randint(8, 16)
-        thing, p2 = rng.choice([("is", "age"), ("is level", "level"), ("scored", "points")])
-        code = _prog(
-            f'def describe(name, {p2}):\n    return f"{{name}} {thing} {{{p2}}}"',
-            f'print(describe({p2}={age}, name="{name}"))',
-        )
-        distractors = [f"{age} {thing} {name}", TYPE_ERROR, NAME_ERROR, f"name {thing} {p2}"]
-        why = (
-            f"`name=\"{name}\"` and `{p2}={age}` are matched to the parameters by name, so the "
-            "order you write keyword arguments in does not matter."
-        )
-    else:
-        parts = rng.randint(2, 5)
-        total = parts * rng.randint(2, 6)
-        fname = rng.choice(["divide", "share"])
-        code = _prog(
-            f"def {fname}(total, parts):\n    return total // parts",
-            f"print({fname}(parts={parts}, total={total}))",
-        )
-        distractors = [parts // total, TYPE_ERROR, total * parts, NAME_ERROR]
-        why = (
-            f"Keyword arguments are matched by name: `total` is {total} and `parts` is {parts}, "
-            f"so the result is {total} // {parts} = {total // parts}."
-        )
-    return _output(code, EASY, distractors, why, rng, prompt=PRINT_OR_ERROR)
-
-
-@generator(TOPIC, EASY)
-def gen_wrong_arg_count(rng: random.Random) -> Question:
-    """Too many / too few arguments raise TypeError; defaults make arguments optional."""
-    shape = rng.choice(["too_many", "too_few", "none_expected", "default_ok", "default_ok", "default_full"])
-    a, b, c = rng.sample(range(1, 10), 3)
-    fname = rng.choice(["add", "total", "combine"])
-    allow_error = shape in ("too_many", "too_few", "none_expected")
-    if shape == "too_many":
-        code = _prog(f"def {fname}(a, b):\n    return a + b", f"print({fname}({a}, {b}, {c}))")
-        distractors = [a + b + c, a + b, NAME_ERROR, "None"]
-        why = (
-            f"`{fname}` has exactly 2 parameters, but the call passes 3 arguments. Python never "
-            "silently ignores extra arguments: it raises a `TypeError`."
-        )
-    elif shape == "too_few":
-        code = _prog(f"def {fname}(a, b):\n    return a + b", f"print({fname}({a}))")
-        distractors = [a, "None", NAME_ERROR, a + a]
-        why = (
-            f"`b` has no default value, so `{fname}({a})` is missing a required argument and "
-            "Python raises a `TypeError` before the body runs."
-        )
-    elif shape == "none_expected":
-        msg = rng.choice(["Hi!", "Hello!", "Welcome!"])
-        name = rng.choice(NAMES)
-        fname = rng.choice(["say_hi", "greeting"])
-        code = _prog(f'def {fname}():\n    return "{msg}"', f'print({fname}("{name}"))')
-        distractors = [msg, f"{msg} {name}", NAME_ERROR, name]
-        why = (
-            f"`{fname}` is defined with no parameters, so calling it with one argument "
-            f'("{name}") raises a `TypeError`.'
-        )
-    elif shape == "default_ok":
-        k = rng.randint(2, 10)
-        code = _prog(f"def {fname}(a, b={k}):\n    return a + b", f"print({fname}({a}))")
-        distractors = [TYPE_ERROR, a, "None", a + a]
-        why = (
-            f"`b` has a default value of {k}, so it may be left out: `{fname}({a})` returns "
-            f"{a} + {k} = {a + k}."
-        )
-    else:
-        code = _prog(f"def {fname}(a, b, c=0):\n    return a + b + c", f"print({fname}({a}, {b}, {c}))")
-        distractors = [TYPE_ERROR, a + b, NAME_ERROR, a + b + c + 1]
-        why = (
-            f"`c` has a default, but you are still allowed to pass it. Here `c` is {c}, so the "
-            f"result is {a} + {b} + {c} = {a + b + c}."
-        )
-    return _output(code, EASY, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, EASY)
-def gen_scope_basics(rng: random.Random) -> Question:
-    """Locals vanish after the call; functions can read globals; parameters are local."""
-    shape = rng.choice(["local_outside", "param_outside", "read_global", "param_shadow", "defined_later"])
-    allow_error = shape in ("local_outside", "param_outside")
-    if shape == "local_outside":
-        var = rng.choice(["total", "secret", "result", "answer"])
-        fname = rng.choice(["calculate", "make_total", "compute"])
-        a, b = rng.randint(2, 9), rng.randint(2, 9)
-        code = _prog(f"def {fname}():\n    {var} = {a} + {b}\n    return {var}", f"{fname}()\nprint({var})")
-        distractors = [a + b, "None", UNBOUND, NOTHING_PRINTED]
-        why = (
-            f"`{var}` is a local variable: it only exists while `{fname}` is running. The "
-            f"returned value is thrown away and there is no global `{var}`, so `print({var})` "
-            "raises a `NameError`."
-        )
-    elif shape == "param_outside":
-        name, body, _ = rng.choice(_ONE_ARG)
-        p = rng.choice(_PARAMS)
-        a = rng.randint(2, 9)
-        code = _prog(f"def {name}({p}):\n    return {body.format(p=p)}", f"result = {name}({a})\nprint({p})")
-        distractors = [a, _calc(body, a), "None", UNBOUND]
-        why = (
-            f"The parameter `{p}` is local to `{name}`: it gets the value {a} during the call "
-            f"and disappears afterwards. Outside the function `{p}` was never defined, so "
-            "Python raises a `NameError`."
-        )
-    elif shape == "read_global":
-        var = rng.choice(["bonus", "extra", "tax"])
-        k = rng.randint(2, 9)
-        s = rng.randint(10, 30)
-        fname = f"add_{var}"
-        code = _prog(f"{var} = {k}", f"def {fname}(score):\n    return score + {var}", f"print({fname}({s}))")
-        distractors = [NAME_ERROR, s, UNBOUND, k]
-        why = (
-            f"A function can read a global variable it does not assign to. `{var}` is {k}, so "
-            f"`{fname}({s})` returns {s} + {k} = {s + k}."
-        )
-    elif shape == "param_shadow":
-        p = rng.choice(_PARAMS)
-        g = rng.randint(10, 20)
-        a = rng.randint(2, 9)
-        code = _prog(f"{p} = {g}", f"def add_one({p}):\n    return {p} + 1", f"print(add_one({a}), {p})")
-        distractors = [f"{g + 1} {g}", f"{a + 1} {a + 1}", f"{a + 1} {a}", NAME_ERROR]
-        why = (
-            f"Inside `add_one`, `{p}` is the parameter (a local variable) holding {a}, so the "
-            f"call returns {a + 1}. The global `{p}` is a different variable and stays {g}."
-        )
-    else:
-        word = rng.choice(["hi", "ready", "go team", "hello"])
-        var = rng.choice(["message", "text", "note"])
-        fname = rng.choice(["show", "display"])
-        code = _prog(f"def {fname}():\n    print({var})", f'{var} = "{word}"\n{fname}()')
-        distractors = [NAME_ERROR, UNBOUND, var, NOTHING_PRINTED]
-        why = (
-            "A function looks up global names when it is *called*, not when it is defined. "
-            f"By the time `{fname}()` runs, `{var}` already exists, so it prints {word}."
-        )
-    return _output(code, EASY, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, EASY)
-def gen_fill_return(rng: random.Random) -> Question:
-    """Which line completes the function? (return vs print vs a bare expression)."""
-    name, body, (w1, w2) = rng.choice(_ONE_ARG)
-    p = rng.choice(_PARAMS)
-    a = rng.randint(2, 9)
-    k = rng.randint(1, 5)
-    expr = body.format(p=p)
-    code = _prog(f"def {name}({p}):\n    {BLANK}", f"result = {name}({a}) + {k}\nprint(result)")
-    target = str(_calc(body, a) + k)
-    correct = f"return {expr}"
-    wrong = [
-        f"print({expr})",
-        expr,
-        f"return {w1.format(p=p)}",
-        f"{p} = {expr}",
-        f"return {w2.format(p=p)}",
-        f"return {p}",
-    ]
-
-    def prints(line: str) -> str:
-        res = run_code(code.replace(BLANK, line))
-        return "ERR" if res.error else res.output
-
-    if prints(correct) != target:
-        raise GenerationError(f"{correct!r} does not print {target!r}")
-    distractors = [w for w in wrong if prints(w) != target]
-    why = (
-        f"Only `return` hands a value back to the caller, so `{correct}` makes "
-        f"`{name}({a})` evaluate to {_calc(body, a)} and `result` becomes {target}. With "
-        f"`print(...)` or a bare expression the function returns `None`, and `None + {k}` "
-        "raises a `TypeError`."
-    )
-    return _choice(
         difficulty=EASY,
-        prompt=f"Which line fills the blank so the code prints `{target}`?",
-        code=code,
+        prompt=prompt,
+        correct="def",
+        distractors=rng.sample(["function", "func", "define", "fun", "create", "make"], 3),
+        explanation="Use the keyword `def` to define a function, for example `def greet():`.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_parameter_or_argument(rng: random.Random) -> Question:
+    """Parameter vs argument, with the lesson's exact definitions or a greet_person snippet."""
+    fn = rng.choice(GREET_FUNCS)
+    person = rng.choice(PEOPLE)
+    code = f'def {fn}(name):\n    print(f"Hello, {{name}}")\n\n{fn}("{person}")'
+    kind = rng.choice(["param_code", "arg_code", "param_def", "arg_def"])
+    other = ["A return value", "The function's name"]
+    if kind == "param_code":
+        prompt, correct, wrong, shown = f"In `def {fn}(name):`, what is `name`?", "A parameter", ["An argument", *other], code
+    elif kind == "arg_code":
+        prompt, correct, wrong, shown = f'In the call `{fn}("{person}")`, what is `"{person}"`?', "An argument", ["A parameter", *other], code
+    elif kind == "param_def":
+        prompt, correct, shown = "Which statement describes a parameter?", PARAM_DEF, None
+        wrong = [ARG_DEF, "The value a function sends back with `return`", "The name that comes right after `def`"]
+    else:
+        prompt, correct, shown = "Which statement describes an argument?", ARG_DEF, None
+        wrong = [PARAM_DEF, "The value a function sends back with `return`", "The name that comes right after `def`"]
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
         correct=correct,
-        distractors=distractors,
-        explanation=why,
+        distractors=wrong,
+        explanation="A parameter is the variable inside the parentheses when you define the function; an argument is the value you pass in when you call it.",
+        rng=rng,
+        code=shown,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_defining_does_not_run(rng: random.Random) -> Question:
+    """'Just defining it won't make it run -- you must call it.'"""
+    fn, msg = rng.choice(NO_ARG_FUNCS)
+    called = rng.random() < 0.35
+    code = f'def {fn}():\n    print("{msg}")'
+    if called:
+        return output_question(
+            topic=TOPIC,
+            difficulty=EASY,
+            code=code + f"\n\n{fn}()",
+            distractors=[NOTHING_PRINTED, f"{msg}\n{msg}", fn, error_choice("NameError")],
+            explanation=f"`def` only defines the function. The call `{fn}()` is what runs it, so the message is printed once.",
+            rng=rng,
+        )
+    return output_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        code=code,
+        distractors=[msg, fn, error_choice("NameError"), f"{fn}()"],
+        explanation=f"Defining a function does not run it. Nothing happens until you call it with `{fn}()`.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_return_concept(rng: random.Random) -> Question:
+    """What does `return` do? ('Return sends the value back to wherever the function was called.')"""
+    prompt = rng.choice(
+        [
+            "What does `return` do in a function?",
+            "Which statement is true about `return`?",
+            "What happens to a value that a function gives to `return`?",
+        ]
+    )
+    fn, expr = rng.choice(MATH)
+    code = f"def {fn}(a, b):\n    return {expr}" if rng.random() < 0.5 else None
+    correct = rng.choice(
+        [
+            "It sends a value back to wherever the function was called",
+            "It gives the result back to the code that called it",
+        ]
+    )
+    wrong = rng.sample(
+        [
+            "It prints the value on the screen",
+            "It makes the function run",
+            "It defines a new function",
+            "It asks the user to type a value",
+            "It repeats the function's code",
+        ],
+        3,
+    )
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
+        correct=correct,
+        distractors=wrong,
+        explanation="`return` sends the value back to wherever the function was called. It does not print anything by itself.",
+        rng=rng,
+        code=code,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_print_input_are_functions(rng: random.Random) -> Question:
+    """'print() and input() are functions too' (already defined in the background)."""
+    if rng.random() < 0.5:
+        name = rng.choice(["print", "input"])
+        return build_question(
+            topic=TOPIC,
+            difficulty=EASY,
+            prompt=f"Which statement is true about `{name}()`?",
+            correct="It is a function that Python already defined for us",
+            distractors=rng.sample(
+                [
+                    "It is a keyword, like `def` and `return`",
+                    "It is not a function because we never wrote `def` for it",
+                    "It only works after you define it with `def`",
+                    "It is a variable that stores text",
+                ],
+                3,
+            ),
+            explanation="`print()` and `input()` are functions we have used all along. They were already defined in the background, just like the functions we write ourselves.",
+            rng=rng,
+        )
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt="Which of these is a function we have already used?",
+        correct=rng.choice(["print()", "input()"]),
+        distractors=rng.sample(["def", "return", "while", "if", "for"], 3),
+        explanation="`print()` and `input()` are functions that were already defined for us. `def`, `return`, `if`, `while` and `for` are keywords, not functions.",
+        rng=rng,
+    )
+
+
+_BENEFITS = [
+    "You can reuse code just by calling the function again",
+    "They keep a program more organized",
+    "Write the steps once, call them whenever you need them",
+    "They make code more reusable",
+]
+_NOT_BENEFITS = [
+    "They are the only way to print text on the screen",
+    "Python will not run a program unless it has a function",
+    "They let you skip using variables",
+    "They change a value's data type automatically",
+    "They make every line of the program run twice",
+]
+
+
+@generator(TOPIC, EASY)
+def gen_why_functions(rng: random.Random) -> Question:
+    """'Why functions matter': organized, efficient, reusable."""
+    prompt = rng.choice(
+        [
+            "Which is a reason to use functions?",
+            "Why do programmers write functions?",
+            "Which statement about why functions matter is true?",
+        ]
+    )
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
+        correct=rng.choice(_BENEFITS),
+        distractors=rng.sample(_NOT_BENEFITS, 3),
+        explanation="Functions make programs more organized, more efficient and more reusable: write the code once, then call it whenever you need it.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_indentation_concept(rng: random.Random) -> Question:
+    """'Indent the code inside the function.'"""
+    fn, msg = rng.choice(NO_ARG_FUNCS)
+    prompt = rng.choice(
+        [
+            "How does Python know which lines belong inside a function?",
+            "Which statement about the code inside a function is true?",
+            "How do you show that a line is part of a function?",
+        ]
+    )
+    code = f'def {fn}():\n    print("{msg}")' if rng.random() < 0.5 else None
+    correct = rng.choice(
+        [
+            "The lines are indented under the `def` line",
+            "They are indented below the `def` line",
+        ]
+    )
+    wrong = rng.sample(
+        [
+            "The lines are written inside quotes",
+            "Each line ends with a semicolon",
+            "The lines start with the word `body`",
+            "The lines come after the word `return`",
+            "The lines are written in capital letters",
+        ],
+        3,
+    )
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
+        correct=correct,
+        distractors=wrong,
+        explanation="Indent the code inside the function (4 spaces). The indented lines are the function's body, and they only run when the function is called.",
+        rng=rng,
+        code=code,
+    )
+
+
+_DEF_LINES = [
+    ("greet_person", "name"),
+    ("greet_person", "name"),
+    ("square_area", "side"),
+    ("add", "a, b"),
+    ("average", "a, b, c"),
+    ("is_even", "n"),
+    ("fahrenheit_to_celsius", "f"),
+]
+
+
+@generator(TOPIC, EASY)
+def gen_def_line(rng: random.Random) -> Question:
+    """Which line correctly starts the function? (colon, def, parentheses)"""
+    fn, params = rng.choice(_DEF_LINES)
+    many = "," in params
+    prompt = f"Which line correctly starts a function named `{fn}` with the parameter{'s' if many else ''} `{params}`?"
+    pool = [
+        f"def {fn}({params})",
+        f"function {fn}({params}):",
+        f"def {fn}[{params}]:",
+        f"{fn}({params}):",
+        f"def {params}({fn}):",
+    ]
+    wrong = [pool[0], *rng.sample(pool[1:], 2)]
+    return build_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
+        correct=f"def {fn}({params}):",
+        distractors=wrong,
+        explanation="A definition is `def`, the function name, the parameters in parentheses, and a colon at the end. The indented lines below it are the body.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, EASY)
+def gen_call_result_simple(rng: random.Random) -> Question:
+    """One-line result: what does print(add(2, 3)) show?"""
+    fn, expr = rng.choice(MATH)
+    a, b = _two_ints(rng)
+    right = _apply(expr, a=a, b=b)
+    wrong = [str(_apply(e, a=a, b=b)) for e in ("a + b", "a * b", "a - b", "b - a")] + [f"{a}{b}"]
+    code = f"def {fn}(a, b):\n    return {expr}\n\nprint({fn}({a}, {b}))"
+    return output_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        code=code,
+        distractors=[w for w in wrong if w != str(right)],
+        explanation=f"The arguments {a} and {b} go into `a` and `b`, `return {expr}` sends {right} back, and `print` shows it.",
         rng=rng,
     )
 
 
 # ==========================================================================
-# MEDIUM
+# CHOICE -- MEDIUM (trace a short lab-style snippet, spot the classic mistake)
 # ==========================================================================
 
-# (function source, argument source, (first, second) returned, names to unpack into)
-def _pair_function(rng: random.Random):
-    kind = rng.choice(["min_max", "split_time", "first_last", "divide"])
-    if kind == "min_max":
-        nums = rng.sample(range(1, 20), 4)
-        src = "def min_max(nums):\n    return min(nums), max(nums)"
-        return src, f"min_max({nums})", (min(nums), max(nums)), ("low", "high")
-    if kind == "split_time":
-        minutes = rng.choice([m for m in range(65, 200) if m % 60 > 1 and m % 60 != m // 60])
-        src = "def split_time(minutes):\n    return minutes // 60, minutes % 60"
-        return src, f"split_time({minutes})", (minutes // 60, minutes % 60), ("hours", "mins")
-    if kind == "first_last":
-        words = rng.sample(["red", "blue", "green", "gold", "pink", "teal", "gray"], 3)
-        src = "def first_last(items):\n    return items[0], items[-1]"
-        arg = "[" + ", ".join(f'"{w}"' for w in words) + "]"
-        return src, f"first_last({arg})", (words[0], words[-1]), ("first", "last")
-    b = rng.randint(3, 6)
-    a = b * rng.randint(2, 6) + rng.randint(1, b - 1)
-    if a // b == a % b:
-        a += 1 if a % b < b - 1 else -1
-    src = "def divide(a, b):\n    return a // b, a % b"
-    return src, f"divide({a}, {b})", (a // b, a % b), ("whole", "left")
-
 
 @generator(TOPIC, MEDIUM)
-def gen_return_multiple(rng: random.Random) -> Question:
-    """``return a, b`` returns ONE tuple, which can be unpacked or indexed."""
-    src, call, (x, y), (n1, n2) = _pair_function(rng)
-    rx, ry = repr(x), repr(y)
-    tup = f"({rx}, {ry})"
-    shape = rng.choice(["print", "unpack", "index", "type", "too_many"])
-    allow_error = shape == "too_many"
-    if shape == "print":
-        code = _prog(src, f"print({call})")
-        distractors = [f"{x} {y}", f"[{rx}, {ry}]", rx, f"{x}\n{y}"]
-        ret = src.split("return ")[1]
-        why = (
-            f"`return {ret}` sends back both values packed into ONE tuple, so `print` shows "
-            f"the tuple {tup} (with parentheses)."
-        )
-    elif shape == "unpack":
-        code = _prog(src, f"{n1}, {n2} = {call}\nprint({n2}, {n1})")
-        distractors = [f"{x} {y}", f"({ry}, {rx})", tup, VALUE_ERROR]
-        why = (
-            f"The function returns the tuple {tup}. Unpacking puts {rx} in `{n1}` and {ry} in "
-            f"`{n2}`, and the `print` lists `{n2}` first."
-        )
-    elif shape == "index":
-        code = _prog(src, f"result = {call}\nprint(result[1])")
-        distractors = [x, tup, TYPE_ERROR, f"({ry},)"]
-        why = f"`result` is the tuple {tup}. Tuples are indexed from 0, so `result[1]` is {ry}."
-    elif shape == "type":
-        code = _prog(src, f"result = {call}\nprint(type(result))")
-        first_type = type(x).__name__
-        distractors = ["<class 'list'>", f"<class '{first_type}'>", "<class 'NoneType'>", "<class 'dict'>"]
-        why = (
-            "Writing two values after `return`, separated by a comma, packs them into a tuple, "
-            f"so `result` is {tup} and its type is `tuple`."
-        )
-    else:
-        code = _prog(src, f"a, b, c = {call}\nprint(a)")
-        distractors = [rx, tup, TYPE_ERROR, "None"]
-        why = (
-            "The function returns a tuple of 2 values, but the code tries to unpack it into 3 "
-            "names. Unpacking needs exactly as many names as values, so it raises a `ValueError`."
-        )
-    return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_early_return(rng: random.Random) -> Question:
-    """``return`` exits immediately — even from inside a loop."""
-    shape = rng.choice(["first_match", "first_match", "return_in_loop", "guard"])
-    if shape == "first_match":
-        kind = rng.choice(["even", "over"])
-        found = rng.random() < 0.8
-        if kind == "even":
-            test, fname, args = "n % 2 == 0", "first_even", ""
-            odds = [v for v in range(1, 20) if v % 2]
-            evens = [v for v in range(2, 21) if v % 2 == 0]
-            if found:
-                nums = rng.sample(odds, 3) + rng.sample(evens, 2)
-                rng.shuffle(nums)
-                if nums[0] % 2 == 0:  # make the first element a non-match
-                    i = next(i for i, v in enumerate(nums) if v % 2)
-                    nums[0], nums[i] = nums[i], nums[0]
-            else:
-                nums = rng.sample(odds, 4)
-            matches = [v for v in nums if v % 2 == 0]
-            head = "def first_even(nums):"
-        else:
-            limit = rng.randint(8, 14)
-            test, fname, args = "n > limit", "first_over", f", {limit}"
-            low = list(range(1, limit + 1))
-            high = list(range(limit + 1, limit + 15))
-            if found:
-                nums = rng.sample(low, 3) + rng.sample(high, 2)
-                rng.shuffle(nums)
-                if nums[0] > limit:
-                    i = next(i for i, v in enumerate(nums) if v <= limit)
-                    nums[0], nums[i] = nums[i], nums[0]
-            else:
-                nums = rng.sample(low, 4)
-            matches = [v for v in nums if v > limit]
-            head = "def first_over(nums, limit):"
-        code = _prog(
-            f"{head}\n    for n in nums:\n        if {test}:\n            return n\n    return -1",
-            f"print({fname}({nums}{args}))",
-        )
-        if found:
-            first = matches[0]
-            distractors = [matches[-1], matches, -1, nums.index(first), nums[0]]
-            why = (
-                f"The loop checks the numbers in order and `return n` exits the function at the "
-                f"first match, {first}. The loop never reaches {matches[-1]}."
-            )
-        else:
-            distractors = ["None", nums[-1], nums[0], "[]"]
-            why = (
-                "No number passes the test, so the `return n` inside the loop never runs. The "
-                "loop finishes and the function reaches `return -1`."
-            )
-        return _output(code, MEDIUM, distractors, why, rng)
-    if shape == "return_in_loop":
-        fname = rng.choice(["total", "add_up", "sum_all"])
-        var = rng.choice(["result", "running", "acc"])
-        nums = rng.sample(range(1, 10), rng.randint(3, 4))
-        code = _prog(
-            f"def {fname}(nums):\n    {var} = 0\n    for n in nums:\n        {var} += n\n"
-            f"        return {var}",
-            f"print({fname}({nums}))",
-        )
-        distractors = [sum(nums), nums[-1], sum(nums[:2]), "None", 0]
-        why = (
-            f"`return {var}` is indented inside the `for` loop, so it runs at the end of the "
-            f"FIRST pass: the function returns {nums[0]} before the other numbers are added."
-        )
-        return _output(code, MEDIUM, distractors, why, rng)
-    guard, word, bad, good = rng.choice(
-        [
-            ("n < 0", "negative", rng.randint(-9, -1), rng.randint(1, 9)),
-            ("n == 0", "zero", 0, rng.randint(1, 9)),
-            ("n > 100", "too big", rng.randint(101, 150), rng.randint(1, 99)),
-        ]
-    )
-    calls = [bad, good] if rng.random() < 0.5 else [good, bad]
-    fname = rng.choice(["check", "check_value"])
-    code = _prog(
-        f'def {fname}(n):\n    if {guard}:\n        return "{word}"\n    print("checking", n)\n'
-        '    return "ok"',
-        f"print({fname}({calls[0]}))\nprint({fname}({calls[1]}))",
-    )
-
-    def model(mode: str) -> str:
-        out = []
-        for n in calls:
-            if n == bad and mode != "no_stop":
-                if mode == "print_anyway":
-                    out.append(f"checking {n}")
-                out.append(word)
-                continue
-            if mode != "skip_print":
-                out.append(f"checking {n}")
-            out.append("ok")
-        return "\n".join(out)
-
-    distractors = [model("print_anyway"), model("skip_print"), model("no_stop")]
-    why = (
-        f"For {bad}, the condition `{guard}` is true, so `return \"{word}\"` ends the call "
-        f'right away and the `print("checking", n)` line is skipped. For {good} the function '
-        "carries on, prints, then returns \"ok\"."
-    )
-    return _output(code, MEDIUM, distractors, why, rng)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_global_vs_local(rng: random.Random) -> Question:
-    """Assigning inside a function creates a local unless you declare ``global``."""
-    var = rng.choice(["score", "lives", "level", "count"])
-    shape = rng.choice(["shadow", "global_assign", "global_counter", "param_discard", "param_assign"])
-    if shape == "shadow":
-        g, local = rng.randint(5, 20), rng.randint(0, 4)
-        fname = rng.choice(["reset", "update", "change"])
-        code = _prog(
-            f"{var} = {g}",
-            f'def {fname}():\n    {var} = {local}\n    print("inside:", {var})',
-            f'{fname}()\nprint("outside:", {var})',
-        )
-        distractors = [
-            f"inside: {local}\noutside: {local}",
-            UNBOUND,
-            f"inside: {g}\noutside: {g}",
-            f"inside: {g}\noutside: {local}",
-        ]
-        why = (
-            f"Assigning `{var} = {local}` inside `{fname}` creates a new LOCAL variable that "
-            f"only exists during the call. The global `{var}` is untouched and is still {g}."
-        )
-    elif shape == "global_assign":
-        g, new = rng.randint(5, 20), rng.randint(0, 4)
-        fname = rng.choice(["reset", "update", "change"])
-        code = _prog(
-            f"{var} = {g}",
-            f"def {fname}():\n    global {var}\n    {var} = {new}",
-            f"print({var})\n{fname}()\nprint({var})",
-        )
-        distractors = [f"{g}\n{g}", f"{new}\n{new}", UNBOUND, f"{g}\nNone"]
-        why = (
-            f"`global {var}` tells Python that `{var}` inside `{fname}` means the global "
-            f"variable, so the assignment changes it from {g} to {new}."
-        )
-    elif shape == "global_counter":
-        a, b = rng.sample(range(2, 10), 2)
-        start = rng.choice([0, 0, 1, 10])
-        fname = rng.choice(["add", "add_points", "deposit"])
-        code = _prog(
-            f"{var} = {start}",
-            f"def {fname}(n):\n    global {var}\n    {var} += n",
-            f"{fname}({a})\n{fname}({b})\nprint({var})",
-        )
-        distractors = [start + b, start, UNBOUND, a + b if start else start + a, start + a]
-        why = (
-            f"Because of `global {var}`, each call updates the same global variable: "
-            f"{start} + {a} + {b} = {start + a + b}."
-        )
-    else:
-        g, k = rng.randint(1, 9), rng.randint(2, 6)
-        fname = rng.choice(["bump", "boost", "grow"])
-        func = f"def {fname}({var}):\n    {var} += {k}\n    return {var}"
-        if shape == "param_discard":
-            code = _prog(f"{var} = {g}", func, f"{fname}({var})\nprint({var})")
-            distractors = [g + k, UNBOUND, "None", k]
-            why = (
-                f"The parameter `{var}` is a separate LOCAL variable that starts with the value "
-                f"{g}; `+= {k}` changes only that local. The returned {g + k} is never stored, so "
-                f"the global `{var}` is still {g}."
-            )
-        else:
-            code = _prog(f"{var} = {g}", func, f"{var} = {fname}({var})\nprint({var})")
-            distractors = [g, UNBOUND, "None", g + 2 * k]
-            why = (
-                f"The function's local `{var}` becomes {g + k} and is returned. Assigning the "
-                f"result back with `{var} = {fname}({var})` updates the global to {g + k}."
-            )
-    return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR)
-
-
-def _two_steps(rng: random.Random, x: int):
-    """Two different helpers f, g whose order matters for ``x``."""
-    for _ in range(50):
-        (fn, fb), (gn, gb) = rng.sample(_STEPS, 2)
-        f, g = _step_fn(fb), _step_fn(gb)
-        if f(g(x)) != g(f(x)):
-            return (fn, fb, f), (gn, gb, g)
-    raise GenerationError("no non-commuting pair found")
-
-
-@generator(TOPIC, MEDIUM)
-def gen_composition(rng: random.Random) -> Question:
-    """Nested calls ``f(g(x))`` run the inner call first; helpers calling helpers."""
-    shape = rng.choice(["nested", "nested", "both_orders", "helper"])
-    if shape == "helper":
-        a, b = rng.sample(range(2, 7), 2)
-        op, outer = rng.choice([("+", "sum_of_squares"), ("-", "diff_of_squares")])
-        code = _prog(
-            "def square(n):\n    return n * n",
-            f"def {outer}(a, b):\n    return square(a) {op} square(b)",
-            f"print({outer}({a}, {b}))",
-        )
-        sign = 1 if op == "+" else -1
-        ans = a * a + sign * b * b
-        distractors = [
-            (a + sign * b) ** 2,
-            2 * a + sign * 2 * b,
-            a + sign * b,
-            a * a + sign * b,
-        ]
-        why = (
-            f"`{outer}` calls `square` twice: `square({a})` is {a * a} and `square({b})` is "
-            f"{b * b}, so it returns {a * a} {op} {b * b} = {ans}."
-        )
-        return _output(code, MEDIUM, _nums(distractors, ans, rng), why, rng)
-    deep = shape == "nested" and rng.random() < 0.5
-    x = rng.randint(2, 4) if deep else rng.randint(2, 6)
-    (fn, fb, f), (gn, gb, g) = _two_steps(rng, x)
-    while deep and abs(f(g(f(x)))) > 200:  # keep the arithmetic mental-math friendly
-        (fn, fb, f), (gn, gb, g) = _two_steps(rng, x)
-    defs = [f"def {fn}(n):\n    return {fb}", f"def {gn}(n):\n    return {gb}"]
-    if rng.random() < 0.5:
-        defs.reverse()
-    if shape == "nested":
-        if not deep:
-            code = _prog(*defs, f"print({fn}({gn}({x})))")
-            ans = f(g(x))
-            distractors = [g(f(x)), g(x), f(x), f(f(x))]
-            why = (
-                f"The inner call runs first: `{gn}({x})` returns {g(x)}, and that value is passed "
-                f"to `{fn}`, which returns {ans}."
-            )
-        else:
-            code = _prog(*defs, f"print({fn}({gn}({fn}({x}))))")
-            ans = f(g(f(x)))
-            distractors = [g(f(g(x))), f(g(x)), g(f(x)), f(f(g(x)))]
-            why = (
-                f"Work from the inside out: `{fn}({x})` is {f(x)}, then `{gn}({f(x)})` is "
-                f"{g(f(x))}, and finally `{fn}({g(f(x))})` is {ans}."
-            )
-        return _output(code, MEDIUM, _nums(distractors, ans, rng), why, rng)
-    a, b = f(g(x)), g(f(x))
-    code = _prog(*defs, f"print({fn}({gn}({x})), {gn}({fn}({x})))")
-    distractors = [f"{b} {a}", f"{a} {a}", f"{b} {b}", f"{f(x)} {g(x)}", f"{g(x)} {f(x)}"]
-    why = (
-        f"Always start with the innermost call. `{fn}({gn}({x}))` is `{fn}({g(x)})` = {a}, while "
-        f"`{gn}({fn}({x}))` is `{gn}({f(x)})` = {b}. The order of nesting matters."
-    )
-    return _output(code, MEDIUM, distractors, why, rng)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_args_kwargs(rng: random.Random) -> Question:
-    """``*args`` collects extra positional arguments in a tuple, ``**kwargs`` in a dict."""
-    shape = rng.choice(["count", "show", "first_rest", "kwargs_dict", "kwargs_items"])
-    vals = rng.sample(range(1, 10), 3)
-    prompt, allow_error = PRINT, False
-    if shape == "count":
-        fname = rng.choice(["count_args", "how_many"])
-        func = f"def {fname}(*args):\n    return len(args)"
-        if rng.random() < 0.6:
-            code = _prog(func, f"print({fname}({', '.join(map(str, vals))}), {fname}({vals}))")
-            distractors = ["3 3", "1 1", "3 0", TYPE_ERROR]
-            why = (
-                "`*args` collects each positional argument as one item. The first call passes "
-                f"3 numbers; the second passes ONE argument (the list {vals}), so `args` has 1 item."
-            )
-        else:
-            code = _prog(func, f"print({fname}({vals[0]}, {vals[1]}), {fname}())")
-            distractors = ["2 1", TYPE_ERROR, "2 None", "1 0"]
-            why = (
-                "`*args` collects all positional arguments into a tuple. With no arguments the "
-                "tuple is empty, so `len(args)` is 0 and no error is raised."
-            )
-        prompt = PRINT_OR_ERROR
-    elif shape == "show":
-        if rng.random() < 0.5:
-            items = vals
-            call = ", ".join(map(str, items))
-        else:
-            items = rng.sample(["a", "b", "c", "x", "y"], rng.randint(2, 3))
-            call = ", ".join(f'"{s}"' for s in items)
-        fname = rng.choice(["show", "display"])
-        code = _prog(f"def {fname}(*items):\n    print(items)", f"{fname}({call})")
-        distractors = [str(items), " ".join(map(str, items)), repr(items[0]), f"({tuple(items)},)"]
-        why = (
-            "`*items` packs all the positional arguments into a TUPLE, so `print(items)` "
-            f"shows {tuple(items)}."
-        )
-    elif shape == "first_rest":
-        fname = rng.choice(["split_first", "head_and_rest"])
-        code = _prog(
-            f"def {fname}(first, *rest):\n    print(first, rest)", f"{fname}({', '.join(map(str, vals))})"
-        )
-        a, b, c = vals
-        distractors = [f"{a} [{b}, {c}]", f"{a} {b} {c}", f"{a} ({a}, {b}, {c})", f"({a}, {b}, {c}) ()"]
-        why = (
-            f"The first argument fills the normal parameter `first` ({a}); `*rest` collects "
-            f"whatever is left into a tuple: ({b}, {c})."
-        )
-    elif shape == "kwargs_dict":
-        (k1, v1), (k2, v2) = rng.sample(
-            [("name", f'"{rng.choice(NAMES)}"'), ("age", str(rng.randint(8, 16))),
-             ("city", '"Paris"'), ("level", str(rng.randint(2, 9))), ("pet", '"cat"')],
-            2,
-        )
-        fname = rng.choice(["profile", "describe"])
-        code = _prog(f"def {fname}(**info):\n    print(info)", f"{fname}({k1}={v1}, {k2}={v2})")
-        r1, r2 = repr(eval(v1)), repr(eval(v2))  # noqa: S307 - literals we built
-        distractors = [
-            f"{{{k1}: {r1}, {k2}: {r2}}}",
-            f"['{k1}', '{k2}']",
-            f"({r1}, {r2})",
-            f"{k1}={r1}, {k2}={r2}",
-        ]
-        why = (
-            "`**info` collects the keyword arguments into a dictionary: the parameter names "
-            f"become string keys ('{k1}', '{k2}'), in the order they were passed."
-        )
-    else:
-        pairs = rng.sample([("size", 3), ("color", '"red"'), ("speed", 7), ("shape", '"star"')], 2)
-        call = ", ".join(f"{k}={v}" for k, v in pairs)
-        code = _prog(
-            "def settings(**options):\n    for key, value in options.items():\n        print(key, value)",
-            f"settings({call})",
-        )
-        plain = [(k, str(v).strip('"')) for k, v in pairs]
-        distractors = [
-            _lines(*(v for _, v in plain)),
-            _lines(*(k for k, _ in plain)),
-            _lines(*(f"{k} {v}" for k, v in reversed(plain))),
-            f"{plain[0][0]} {plain[0][1]}",
-        ]
-        why = (
-            "`**options` is a dictionary of the keyword arguments, so `.items()` gives each "
-            "name with its value, in the order they were passed."
-        )
-    return _output(code, MEDIUM, distractors, why, rng, prompt=prompt, allow_error=allow_error)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_lambda(rng: random.Random) -> Question:
-    """Small anonymous functions passed to sorted/max/filter or another function."""
-    shape = rng.choice(["sort_key", "max_key", "apply_twice", "ops_dict", "filter"])
-    if shape == "sort_key":
-        while True:
-            digits = rng.sample(range(1, 10), 4)
-            tens = rng.sample(range(1, 10), 4)
-            nums = [t * 10 + d for t, d in zip(tens, digits)]
-            ans = sorted(nums, key=lambda n: n % 10)
-            if ans not in (sorted(nums), sorted(nums, reverse=True), nums):
-                break
-        code = f"nums = {nums}\nprint(sorted(nums, key=lambda n: n % 10))"
-        distractors = [sorted(nums), sorted(digits), ans[::-1], sorted(nums, reverse=True), nums]
-        why = (
-            "The `key` function is applied to each item and the items are ordered by those "
-            f"results. `n % 10` is the last digit, so the numbers are sorted by {sorted(digits)}."
-        )
-        return _output(code, MEDIUM, distractors, why, rng)
-    if shape == "max_key":
-        names = rng.sample(NAMES, 4)
-        scores = rng.sample(range(2, 30), 4)
-        pairs = list(zip(names, scores))
-        want_max = rng.random() < 0.6
-        fn = "max" if want_max else "min"
-        var = "best" if want_max else "lowest"
-        ranked = sorted(pairs, key=lambda pair: pair[1], reverse=want_max)
-        pick, runner_up, other = ranked[0], ranked[1], ranked[-1]
-        by_name = (max if want_max else min)(pairs)
-        code = (
-            "scores = [" + ", ".join(f'("{n}", {s})' for n, s in pairs) + "]\n"
-            f"{var} = {fn}(scores, key=lambda pair: pair[1])\n"
-            f"print({var}[0])"
-        )
-        distractors = [other[0], by_name[0], pick[1], pairs[0][0], runner_up[0]]
-        why = (
-            f"`key=lambda pair: pair[1]` makes `{fn}` compare the numbers, not the names. "
-            f"The pair with the {'largest' if want_max else 'smallest'} number is {pick}, and "
-            f"`[0]` takes its name."
-        )
-        return _output(code, MEDIUM, distractors, why, rng)
-    if shape == "apply_twice":
-        k = rng.randint(2, 5)
-        start = rng.randint(1, 6)
-        op = rng.choice(["+", "*", "-"])
-        f = {"+": lambda n: n + k, "*": lambda n: n * k, "-": lambda n: n - k}[op]
-        code = _prog(
-            "def apply_twice(func, value):\n    return func(func(value))",
-            f"print(apply_twice(lambda n: n {op} {k}, {start}))",
-        )
-        ans = f(f(start))
-        distractors = [f(start), f(f(f(start))), start, f(start) * 2]
-        why = (
-            f"`func` is the lambda `n {op} {k}`. It is applied to {start} giving {f(start)}, "
-            f"then applied again to {f(start)} giving {ans}."
-        )
-        return _output(code, MEDIUM, _nums(distractors, ans, rng), why, rng)
-    if shape == "ops_dict":
-        ops = {"add": "+", "sub": "-", "mul": "*"}
-        keys = list(ops)
-        rng.shuffle(keys)
-        a, b = rng.randint(6, 12), rng.randint(2, 5)
-        k1, k2 = rng.sample(keys, 2)
-        code = (
-            "ops = {\n"
-            + "".join(f'    "{k}": lambda a, b: a {ops[k]} b,\n' for k in keys)
-            + "}\n"
-            + f'print(ops["{k1}"]({a}, {b}), ops["{k2}"]({b}, {a}))'
-        )
-
-        def calc(k, x, y):
-            return eval(f"{x} {ops[k]} {y}")  # noqa: S307 - our own arithmetic
-
-        k3 = next(k for k in keys if k not in (k1, k2))
-        r1, r2 = calc(k1, a, b), calc(k2, b, a)
-        distractors = [
-            f"{r1} {calc(k2, a, b)}",
-            f"{calc(k2, a, b)} {calc(k1, b, a)}",
-            f"{calc(k1, b, a)} {r2}",
-            f"{r2} {r1}",
-            TYPE_ERROR,
-            f"{calc(k3, a, b)} {calc(k3, b, a)}",
-        ]
-        why = (
-            f'`ops["{k1}"]` looks up a lambda, and `({a}, {b})` calls it, giving {r1}. '
-            f'`ops["{k2}"]({b}, {a})` gives {r2} — note the arguments are in a different order.'
-        )
-        return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR)
-    nums = rng.sample(range(1, 20), 5)
-    limit = sorted(nums)[2]
-    code = f"nums = {nums}\nprint(list(filter(lambda n: n > {limit}, nums)))"
-    kept = [n for n in nums if n > limit]
-    distractors = [
-        [n for n in nums if n <= limit],
-        [n for n in nums if n >= limit],
-        [n > limit for n in nums],
-        sorted(kept),
-    ]
-    why = (
-        f"`filter` keeps the items for which the lambda returns `True`. Only the numbers "
-        f"greater than {limit} pass, in their original order: {kept}."
-    )
-    return _output(code, MEDIUM, distractors, why, rng)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_functions_as_values(rng: random.Random) -> Question:
-    """Functions are objects: they can be aliased, stored in lists and passed around."""
-    shape = rng.choice(["alias", "called_alias", "pipeline", "pipeline", "pass_func", "pass_result"])
-    if shape in ("alias", "called_alias"):
-        fname, body, trans = rng.choice(
-            [
-                ("shout", 'text.upper() + "!"', lambda s: s.upper() + "!"),
-                ("whisper", 'text.lower() + "..."', lambda s: s.lower() + "..."),
-                ("echo", "text + text", lambda s: s + s),
-            ]
-        )
-        alias = rng.choice(["speak", "say", "talk"])
-        w1, w2 = rng.sample(["hi", "Hey", "wow", "Yes", "ok", "Go"], 2)
-        func = f"def {fname}(text):\n    return {body}"
-        if shape == "alias":
-            code = _prog(func, f'{alias} = {fname}\nprint({alias}("{w1}"))')
-            distractors = [NAME_ERROR, TYPE_ERROR, w1, f"{fname}"]
-            why = (
-                f"`{alias} = {fname}` (no parentheses) makes `{alias}` another name for the same "
-                f'function, so `{alias}("{w1}")` calls `{fname}` and returns {trans(w1)}.'
-            )
-            allow_error = False
-        else:
-            code = _prog(func, f'{alias} = {fname}("{w1}")\nprint({alias}("{w2}"))')
-            distractors = [trans(w2), trans(w1), NAME_ERROR, w2]
-            why = (
-                f'`{fname}("{w1}")` has parentheses, so it CALLS the function: `{alias}` is the '
-                f"string {trans(w1)!r}, not a function. Calling a string raises a `TypeError`."
-            )
-            allow_error = True
-        return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-    if shape == "pipeline":
-        x = rng.randint(2, 5)
-        (fn, fb, f), (gn, gb, g) = _two_steps(rng, x)
-        funcs = {fn: f, gn: g}
-        order = rng.choice([[fn, gn], [gn, fn], [fn, gn, fn], [gn, fn, gn], [fn, fn, gn]])
-        var = rng.choice(["value", "result", "x"])
-        code = _prog(
-            f"def {fn}(n):\n    return {fb}",
-            f"def {gn}(n):\n    return {gb}",
-            f"{var} = {x}\nfor step in [{', '.join(order)}]:\n    {var} = step({var})\nprint({var})",
-        )
-
-        def chain(names, start):
-            for nm in names:
-                start = funcs[nm](start)
-            return start
-
-        ans = chain(order, x)
-        distractors = [chain(order[::-1], x), funcs[order[-1]](x), funcs[order[0]](x), chain(order[:-1], x)]
-        why = (
-            f"The list holds the functions themselves. Each pass calls the next one on the "
-            f"current value: starting from {x}, applying {', '.join(order)} in order gives {ans}."
-        )
-        return _output(code, MEDIUM, _nums(distractors, ans, rng), why, rng)
-    bonus = rng.randint(2, 9)
-    score = rng.randint(10, 30)
-    bname = rng.choice(["get_bonus", "daily_bonus"])
-    func1 = f"def {bname}():\n    return {bonus}"
-    func2 = "def total(score, bonus_func):\n    return score + bonus_func()"
-    if shape == "pass_func":
-        code = _prog(func1, func2, f"print(total({score}, {bname}))")
-        distractors = [TYPE_ERROR, score, NAME_ERROR, f"{score}{bonus}"]
-        why = (
-            f"`{bname}` is passed WITHOUT parentheses, so `bonus_func` is the function itself. "
-            f"`bonus_func()` then calls it and gets {bonus}: {score} + {bonus} = {score + bonus}."
-        )
-        allow_error = False
-    else:
-        code = _prog(func1, func2, f"print(total({score}, {bname}()))")
-        distractors = [score + bonus, score, NAME_ERROR, "None"]
-        why = (
-            f"`{bname}()` is called first, so `bonus_func` receives the number {bonus}, not a "
-            f"function. `bonus_func()` then tries to call an `int`, which raises a `TypeError`."
-        )
-        allow_error = True
-    return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, MEDIUM)
-def gen_mixed_arguments(rng: random.Random) -> Question:
-    """Positional + keyword + default arguments in one call (or a clash -> TypeError)."""
-    fname, (p1, p2, p3) = rng.choice(
-        [("cost", ("price", "qty", "shipping")), ("score", ("points", "times", "bonus"))]
-    )
-    d2 = rng.choice([1, 2])
-    d3 = rng.choice([1, 3, 5])
-    a = rng.randint(3, 9)
-    b = rng.choice([v for v in range(2, 6) if v != d2])
-    c = rng.choice([v for v in range(2, 10) if v not in (d3, b, a)])
-
-    def f(x, y=d2, z=d3):
-        return x * y + z
-
-    form = rng.choice(
-        ["skip_middle", "skip_middle", "positional", "keywords_swapped", "all_keywords", "clash"]
-    )
-    allow_error = form == "clash"
-    if form == "skip_middle":
-        call = f"{fname}({a}, {p3}={c})"
-        distractors = [f(a, c), f(a), TYPE_ERROR, a + c]
-        why = (
-            f"`{a}` fills `{p1}` by position, `{p3}={c}` is matched by name, and `{p2}` keeps "
-            f"its default {d2}: {a} * {d2} + {c} = {f(a, z=c)}."
-        )
-    elif form == "positional":
-        call = f"{fname}({a}, {b})"
-        distractors = [f(a, z=b), a * b, TYPE_ERROR, f(a)]
-        why = (
-            f"Positional arguments fill parameters left to right: `{p1}` = {a}, `{p2}` = {b}, and "
-            f"`{p3}` uses its default {d3}: {a} * {b} + {d3} = {f(a, b)}."
-        )
-    elif form == "keywords_swapped":
-        call = f"{fname}({a}, {p3}={c}, {p2}={b})"
-        distractors = [f(a, c, b), TYPE_ERROR, f(a), f(a, b)]
-        why = (
-            f"Keyword arguments can come in any order — they are matched by name. So `{p2}` is "
-            f"{b} and `{p3}` is {c}: {a} * {b} + {c} = {f(a, b, c)}."
-        )
-    elif form == "all_keywords":
-        call = f"{fname}({p3}={c}, {p1}={a})"
-        distractors = [f(c, z=a), TYPE_ERROR, f(a), f(a, c)]
-        why = (
-            f"Every argument here is matched by name: `{p1}` = {a}, `{p3}` = {c}, and `{p2}` "
-            f"uses its default {d2}: {a} * {d2} + {c} = {f(a, z=c)}."
-        )
-    else:
-        call = f"{fname}({a}, {p1}={c})"
-        distractors = [f(c), f(a), f(a, c), NAME_ERROR]
-        why = (
-            f"The positional {a} already fills `{p1}`, and then `{p1}={c}` tries to give it a "
-            "second value. Python refuses with a `TypeError` (multiple values for the argument)."
-        )
-    code = _prog(
-        f"def {fname}({p1}, {p2}={d2}, {p3}={d3}):\n    return {p1} * {p2} + {p3}", f"print({call})"
-    )
-    distractors = _nums(distractors, f(c) if allow_error else int(_run(code)), rng)
-    return _output(code, MEDIUM, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-def _distinct_value_exprs(exprs, setup: str, target) -> list[str]:
-    """Keep wrong expressions whose values differ from the target AND from each other.
-
-    Two equivalent wrong calls (e.g. ``power(3, 2)`` and ``power(base=3, exp=2)``) would let a
-    player eliminate both without understanding either, so only the first one is kept.
-    """
-    seen: list = [target]
-    out = []
-    for e in exprs:
-        res = run_code(f"{setup}\n__value = {e}")
-        value = ("error", res.error) if res.error else res.namespace["__value"]
-        if value in seen:
-            continue
-        seen.append(value)
-        out.append(e)
-    return out
-
-
-@generator(TOPIC, MEDIUM)
-def gen_which_call(rng: random.Random) -> Question:
-    """Which call returns the target value? (positional order, defaults, keywords)."""
-    shape = rng.choice(["power", "scale", "greet"])
-    if shape == "power":
-        d = 2
-        exp = rng.choice([2, 3, 3])
-        base = rng.choice([b for b in range(2, 6) if b != exp])
-        target = base ** exp
-        setup = f"def power(base, exp={d}):\n    return base ** exp"
-        if exp == d:
-            correct = rng.choice([f"power({base})", f"power(exp={exp}, base={base})"])
-        else:
-            correct = rng.choice([f"power({base}, {exp})", f"power(exp={exp}, base={base})"])
-        wrong = [
-            f"power({exp}, {base})",
-            f"power(base={exp}, exp={base})",
-            f"power({target})",
-            f"power({exp})",
-            f"power({base}, {exp + 1})",
-            f"power({base * exp})",
-            f"power({base}, {exp - 1})",
-            f"power({base}, {base}, {exp})",
-        ]
-        why = (
-            f"`{correct}` gives `base` = {base} and `exp` = {exp}, so it returns "
-            f"{base} ** {exp} = {target}. Swapping the arguments, or leaving out `exp` (default "
-            f"{d}), gives a different power."
-        )
-        shown = str(target)
-    elif shape == "scale":
-        df = rng.choice([2, 3])
-        v, o = rng.sample([n for n in range(2, 8) if n != df], 2)
-        fac = rng.choice([x for x in (2, 3, 4, 5) if x not in (df, v, o)])
-        use_default = rng.random() < 0.5
-        factor = df if use_default else fac
-        target = v * factor + o
-        setup = f"def scale(value, factor={df}, offset=0):\n    return value * factor + offset"
-        if use_default:
-            correct = rng.choice([f"scale({v}, offset={o})", f"scale(offset={o}, value={v})"])
-        else:
-            correct = rng.choice([f"scale({v}, {fac}, {o})", f"scale({v}, offset={o}, factor={fac})"])
-        wrong = [
-            f"scale({v}, {o})",
-            f"scale({o}, offset={v})",
-            f"scale({v}, factor={o})",
-            f"scale({v}, {o}, {factor})",
-            f"scale({factor}, {v}, {o})",
-            f"scale({v})",
-            f"scale({v}, offset={factor})",
-            f"scale(offset={v}, value={o})",
-            f"scale({v}, 1, {o})",
-        ]
-        why = (
-            f"`{correct}` sets `value` = {v}, `factor` = {factor} and `offset` = {o}, so it "
-            f"returns {v} * {factor} + {o} = {target}. A second positional argument fills "
-            "`factor`, not `offset`."
-        )
-        shown = str(target)
-    else:
-        dg = rng.choice(["Hello", "Hi"])
-        g = rng.choice([w for w in ["Hey", "Welcome", "Good luck", "Bye"] if w != dg])
-        name = rng.choice(NAMES)
-        target = f"{g}, {name}"
-        setup = f'def greet(name, greeting="{dg}"):\n    return greeting + ", " + name'
-        correct = rng.choice([f'greet("{name}", "{g}")', f'greet(greeting="{g}", name="{name}")'])
-        wrong = [
-            f'greet("{g}", "{name}")',
-            f'greet("{name}")',
-            f'greet(name="{g}", greeting="{name}")',
-            f'greet("{g}")',
-            f'greet("{name}", greeting="{dg}")',
-        ]
-        why = (
-            f"`{correct}` makes `name` = \"{name}\" and `greeting` = \"{g}\", returning "
-            f"\"{target}\". Positional arguments fill `name` first, then `greeting`."
-        )
-        shown = f'"{target}"'
-    wrong = _distinct_value_exprs(wrong, setup, target)
-    return which_expression_question(
+def gen_call_without_print(rng: random.Random) -> Question:
+    """The lesson's `add(1, 1)`: it computes the result but does not show it."""
+    fn, expr = rng.choice(MATH)
+    a, b = _two_ints(rng)
+    right = _apply(expr, a=a, b=b)
+    stored = rng.random() < 0.4
+    call = f"{fn}({a}, {b})"
+    code = f"def {fn}(a, b):\n    return {expr}\n\n" + (f"result = {call}" if stored else call)
+    return output_question(
         topic=TOPIC,
         difficulty=MEDIUM,
-        prompt=f"Which call returns `{shown}`?",
-        setup=setup,
-        target=target,
-        correct_expr=correct,
-        wrong_exprs=wrong,
+        code=code,
+        distractors=[str(right), f"Total: {right}", call, error_choice("NameError")],
+        explanation=f"`{fn}({a}, {b})` computes {right}, but nothing prints it"
+        + (" (it is only stored in `result`)." if stored else " (the value is just thrown away).")
+        + " To see it, use `print(...)`.",
+        rng=rng,
+    )
+
+
+_LABELS = ["Total:", "Total:", "Sum:", "Result:", "Answer:"]
+
+
+@generator(TOPIC, MEDIUM)
+def gen_print_label_total(rng: random.Random) -> Question:
+    """The lesson's `print("Total:", add(1, 1))` -> `Total: 2`."""
+    fn, expr = rng.choice(MATH[:3])
+    a, b = _two_ints(rng)
+    right = _apply(expr, a=a, b=b)
+    label = rng.choice(_LABELS)
+    call = f"{fn}({a}, {b})"
+    if rng.random() < 0.5:
+        tail = f'print("{label}", {call})'
+    else:
+        tail = f"value = {call}\nprint(\"{label}\", value)"
+    code = f"def {fn}(a, b):\n    return {expr}\n\n{tail}"
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=code,
+        distractors=[f"{label} {call}", str(right), f"{label}{right}", f"{label} {a}{b}"],
+        explanation=f"The call gives back {right}, and `print` joins the label and the value with a space: `{label} {right}`.",
+        rng=rng,
+    )
+
+
+_PRINT_RETURN_PAIRS = [
+    ("show_total", "get_total", "a + b"),
+    ("show_total", "get_total", "a + b"),
+    ("show_product", "get_product", "a * b"),
+    ("show_sum", "get_sum", "a + b"),
+]
+
+
+@generator(TOPIC, MEDIUM)
+def gen_print_vs_return_two_functions(rng: random.Random) -> Question:
+    """One function prints its answer, the other returns it: only the printing one shows anything."""
+    show, get, expr = rng.choice(_PRINT_RETURN_PAIRS)
+    for _ in range(20):
+        (a1, b1), (a2, b2) = _two_ints(rng), _two_ints(rng)
+        shown, kept = _apply(expr, a=a1, b=b1), _apply(expr, a=a2, b=b2)
+        if shown != kept:
+            break
+    else:
+        raise GenerationError("same value")
+    calls = [f"{show}({a1}, {b1})", f"{get}({a2}, {b2})"]
+    if rng.random() < 0.5:
+        calls.reverse()
+    code = f"def {show}(a, b):\n    print({expr})\n\ndef {get}(a, b):\n    return {expr}\n\n" + "\n".join(calls)
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=code,
+        distractors=[str(kept), f"{shown}\n{kept}", f"{kept}\n{shown}", NOTHING_PRINTED],
+        explanation=f"`{show}` prints {shown} itself. `{get}` only returns {kept} to the caller, and since nobody prints it, nothing is shown.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_trace_two_calls(rng: random.Random) -> Question:
+    """greet_person("Sarah") then greet_person("Ben"): the argument fills the parameter each time."""
+    fn = rng.choice(GREET_FUNCS)
+    tmpl = rng.choice(GREETINGS)
+    first, second = rng.sample(PEOPLE, 2)
+    code = f'def {fn}(name):\n    print({_fstr(tmpl)})\n\n{fn}("{first}")\n{fn}("{second}")'
+    lit = _fmt(tmpl, "name")
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=code,
+        distractors=[
+            f"{_fmt(tmpl, second)}\n{_fmt(tmpl, first)}",
+            f"{lit}\n{lit}",
+            _fmt(tmpl, first),
+            f"{_fmt(tmpl, first)}\n{_fmt(tmpl, first)}",
+        ],
+        explanation=f"Each call runs the body again with a new argument: `name` is \"{first}\" the first time and \"{second}\" the second time.",
+        rng=rng,
+    )
+
+
+_SEQUENCES = [("Start", "Middle", "End"), ("Ready", "Set", "Go!"), ("Loading...", "Almost there", "Done")]
+
+
+@generator(TOPIC, MEDIUM)
+def gen_trace_define_then_call(rng: random.Random) -> Question:
+    """Order of execution: the def line only stores the function; the call runs the body."""
+    fn, msg = rng.choice(NO_ARG_FUNCS)
+    l1, l2, l3 = rng.choice(_SEQUENCES)
+    twice = rng.random() < 0.4
+    calls = f"{fn}()\n{fn}()" if twice else f"{fn}()"
+    code = f'print("{l1}")\n\ndef {fn}():\n    print("{msg}")\n\nprint("{l2}")\n{calls}\nprint("{l3}")'
+    if twice:
+        wrong = [
+            [l1, l2, msg, l3],
+            [l1, msg, l2, msg, msg, l3],
+            [l1, msg, msg, l2, l3],
+            [l1, l2, l3],
+        ]
+    else:
+        wrong = [
+            [l1, msg, l2, msg, l3],
+            [l1, l2, l3],
+            [l1, msg, l2, l3],
+            [msg, l1, l2, l3],
+        ]
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=code,
+        distractors=["\n".join(w) for w in wrong],
+        explanation=f"Python runs top to bottom. The `def` line does not print anything; `{fn}()` runs the body "
+        + ("each time it is called." if twice else "at the moment it is called, between the other prints."),
+        rng=rng,
+    )
+
+
+# Plausible-sounding but false reasons, per kind of bug (so every wrong choice is really wrong for that code).
+_FALSE_REASONS = {
+    "never_called": [
+        "The function needs a `return` to show anything",
+        "`print()` can't be used inside a function",
+        "The message must be written as an f-string",
+        "The function needs a parameter before it can print",
+    ],
+    "not_printed": [
+        "`return` can't be used with two parameters",
+        "The call needs the word `call` in front of it",
+        "The function should be defined after the call",
+        "The arguments must be written inside quotes",
+    ],
+    "arg_count": [
+        "The function should use `print` instead of `return`",
+        "`return` can't be used with two parameters",
+        "The call has to be written before the `def` line",
+        "Numbers can't be passed as arguments",
+    ],
+    "typo": [
+        "The `def` line is missing a parameter",
+        "`print()` can't be used inside a function",
+        "The argument must not be written in quotes",
+        "The function needs a `return` to show anything",
+    ],
+    "text_plus": [
+        "The function is missing the `def` keyword",
+        "The function has to be called twice",
+        "`print()` can't be given a function call",
+        "The arguments must be written inside quotes",
+    ],
+    "colon": [
+        "The function name can't contain an underscore",
+        "The parameter must be written inside quotes",
+        "`def` has to be followed by the word `function`",
+        "The line must end with a semicolon",
+    ],
+}
+
+
+@generator(TOPIC, MEDIUM)
+def gen_spot_the_bug(rng: random.Random) -> Question:
+    """Classic function mistakes: never called, result never printed, wrong number of arguments,
+    a misspelled call, `+` with text, a missing colon."""
+    fn = rng.choice(GREET_FUNCS)
+    math, expr = rng.choice(MATH[:3])
+    scenario = rng.choice(list(_FALSE_REASONS))
+    related: list[str] = []
+    if scenario == "never_called":
+        name, msg = rng.choice(NO_ARG_FUNCS)
+        prompt = "Nothing appears on the screen when this code runs. What is the problem?"
+        code = f'def {name}():\n    print("{msg}")'
+        right = "The function is defined but never called"
+        why = f"`def` only defines `{name}`. Add the call `{name}()` to run it."
+        related = ["It is missing the colon (:) at the end"]
+    elif scenario == "not_printed":
+        prompt = "Nothing appears on the screen when this code runs. What is the problem?"
+        a, b = _two_ints(rng)
+        code = f"def {math}(a, b):\n    return {expr}\n\n{math}({a}, {b})"
+        right = f"`{math}({a}, {b})` returns a value, but nothing prints it"
+        why = f"The call computes {_apply(expr, a=a, b=b)} but does not show it. Use `print({math}({a}, {b}))`."
+        related = ["It is missing the colon (:) at the end"]
+    elif scenario == "arg_count":
+        prompt = "This code raises a `TypeError`. What is the problem?"
+        a = rng.randint(2, 9)
+        code = f"def {math}(a, b):\n    return {expr}\n\nprint({math}({a}))"
+        right = f"`{math}` needs two arguments but only one was passed"
+        why = f"`{math}` has two parameters, so every call must give two arguments."
+        related = [f"`{math}({a})` returns a value, but nothing prints it"]
+    elif scenario == "typo":
+        typo = fn.replace("er", "e", 1) if "er" in fn else fn[:-1]
+        prompt = f"Python reports `name '{typo}' is not defined`. What is the problem?"
+        code = f'def {fn}(name):\n    print(f"Hello, {{name}}")\n\n{typo}("{rng.choice(PEOPLE)}")'
+        right = "The call uses a different name than the `def` line"
+        why = f"The function is `{fn}`, but the call says `{typo}`. Python can't find a function with that name."
+        related = ["It is missing the colon (:) at the end"]
+    elif scenario == "text_plus":
+        label = rng.choice(["Total: ", "Sum: ", "Result: "])
+        a, b = _two_ints(rng)
+        prompt = "This code raises a `TypeError`. What is the problem?"
+        code = f'def {math}(a, b):\n    return {expr}\n\nprint("{label}" + {math}({a}, {b}))'
+        right = "A number can't be joined to text with `+`"
+        why = f'`{math}({a}, {b})` returns a number, so `"{label}" + ...` mixes text and a number. Use `print("{label.strip()}", {math}({a}, {b}))`.'
+        related = [f"`{math}` needs two arguments but only one was passed"]
+    else:
+        prompt = f"What is wrong with the line `def {fn}(name)`?"
+        code = None
+        right = "It is missing the colon (:) at the end"
+        why = "Every `def` line must end with a colon `:`; the indented body follows on the next lines."
+    wrong = [*related[:1], *rng.sample(_FALSE_REASONS[scenario], 3)]
+    return build_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=prompt,
+        correct=right,
+        distractors=wrong,
         explanation=why,
+        rng=rng,
+        code=code,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_which_line_shows(rng: random.Random) -> Question:
+    """Which statement shows `Total: 2` on the screen? (verified by running every choice)"""
+    fn, expr = rng.choice(MATH[:3])
+    a, b = _two_ints(rng)
+    label = rng.choice(_LABELS)
+    call = f"{fn}({a}, {b})"
+    setup = f"def {fn}(a, b):\n    return {expr}"
+    target = f"{label} {_apply(expr, a=a, b=b)}"
+    right = f'print("{label}", {call})'
+    candidates = [
+        call,
+        f'print("{label}" + {call})',
+        f'print("{label} {call}")',
+        f'print({call}, "{label}")',
+        f"total = {call}",
+    ]
+    wrong = []
+    for cand in candidates:
+        res = run_code(f"{setup}\n{cand}")
+        if res.error is None and res.output == target:
+            continue
+        wrong.append(cand)
+    if _out(f"{setup}\n{right}") != target:
+        raise GenerationError("right answer does not print the target")
+    return build_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Which line shows `{target}` on the screen?",
+        code=setup,
+        correct=right,
+        distractors=wrong,
+        explanation=f"`{call}` on its own computes the value but shows nothing. Put the call inside `print(...)` with the label to display `{target}`.",
+        rng=rng,
+    )
+
+
+# The Mini-Challenge trio.  (function, parameters, correct return expr, wrong exprs, example args)
+_LAB = [
+    (
+        "fahrenheit_to_celsius",
+        "f",
+        "(f - 32) * 5 / 9",
+        ["f - 32 * 5 / 9", "(f - 32) * 9 / 5", "(f + 32) * 5 / 9", "(f - 32) / 5 * 9"],
+        [(212,), (50,), (86,), (68,), (104,)],
+        "returns the temperature in Celsius",
+    ),
+    (
+        "square_area",
+        "side",
+        "side * side",
+        ["side + side", "side * 4", "side * 2", "side"],
+        [(3,), (5,), (6,), (7,)],
+        "returns the area of a square",
+    ),
+    (
+        "average",
+        "a, b, c",
+        "(a + b + c) / 3",
+        ["a + b + c / 3", "(a + b + c) / 2", "a + b + c", "(a + b + c) * 3"],
+        [(2, 4, 9), (3, 6, 9), (1, 5, 6), (4, 5, 9)],
+        "returns the average of the three numbers",
+    ),
+]
+
+
+def _lab_value(fn: str, params: str, expr: str, args: tuple) -> object:
+    """What ``fn(*args)`` returns when its body is ``return <expr>``."""
+    call = f"{fn}({', '.join(repr(x) for x in args)})"
+    res = run_code(f"def {fn}({params}):\n    return {expr}\n\nresult = {call}")
+    return res.namespace.get("result")
+
+
+@generator(TOPIC, MEDIUM)
+def gen_complete_lab_function(rng: random.Random) -> Question:
+    """Mini-Challenge: which return line completes fahrenheit_to_celsius / square_area / average?"""
+    fn, params, expr, wrong_exprs, examples, what = rng.choice(_LAB)
+    args = rng.choice(examples)
+    want = _lab_value(fn, params, expr, args)
+    call = f"{fn}({', '.join(repr(x) for x in args)})"
+    wrong = []
+    for w in wrong_exprs:
+        if _lab_value(fn, params, w, args) != want:
+            wrong.append(f"return {w}")
+    wrong.insert(1, f"print({expr})")
+    return build_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Complete `def {fn}({params}):` with the line that makes `{call}` return `{want}`.",
+        correct=f"return {expr}",
+        distractors=wrong,
+        explanation=f"`{fn}` {what}, so its last line must `return` the formula `{expr}`. "
+        + ("Watch the parentheses: the sum must be divided as a whole." if fn == "average" else "`print(...)` would show a value but not give it back."),
+        rng=rng,
+    )
+
+
+# (function, parameters, return expression, label, argument tuples, buggy expression)
+_LAB_CALLS = [
+    ("fahrenheit_to_celsius", "f", "(f - 32) * 5 / 9", "Celsius:", [(212,), (50,), (86,), (68,), (104,)], "f - 32 * 5 / 9"),
+    ("square_area", "side", "side * side", "Area:", [(3,), (4,), (5,), (6,), (9,)], "side + side"),
+    ("average", "a, b, c", "(a + b + c) / 3", "Average:", [(2, 4, 9), (3, 6, 9), (1, 5, 6), (4, 5, 9)], "a + b + c / 3"),
+]
+
+
+@generator(TOPIC, MEDIUM)
+def gen_trace_lab_calls(rng: random.Random) -> Question:
+    """Mini-Challenge: 'call each one and print the results' -- two lab functions, two labelled prints."""
+    first, second = rng.sample(_LAB_CALLS, 2)
+    defs = "\n\n".join(f"def {fn}({ps}):\n    return {ex}" for fn, ps, ex, *_ in (first, second))
+    order = [first, second]
+    rng.shuffle(order)
+    picked = [(entry, rng.choice(entry[4])) for entry in order]
+    prints = []
+    values = []
+    wrong_vals = []
+    for (fn, ps, ex, label, _args, bad), args in picked:
+        call = f"{fn}({', '.join(map(str, args))})"
+        prints.append(f'print("{label}", {call})')
+        values.append(_lab_value(fn, ps, ex, args))
+        wrong_vals.append(_lab_value(fn, ps, bad, args))
+    labels = [p[0][3] for p in picked]
+    right = [f"{lab} {v}" for lab, v in zip(labels, values)]
+    as_int = [f"{lab} {int(v)}" if isinstance(v, float) and v == int(v) else r for lab, v, r in zip(labels, values, right)]
+    wrong = [
+        "\n".join(as_int),
+        f"{labels[0]} {wrong_vals[0]}\n{right[1]}",
+        f"{right[0]}\n{labels[1]} {wrong_vals[1]}",
+        "\n".join(right[::-1]),
+        right[0],
+        right[1],
+    ]
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=defs + "\n\n" + "\n".join(prints),
+        distractors=wrong,
+        explanation="Each call returns a value that `print` shows after its label. Dividing with `/` always gives a float, so a whole-number result still prints with `.0` (like `5.0`).",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, MEDIUM)
+def gen_argument_order(rng: random.Random) -> Question:
+    """Arguments fill the parameters in order: subtract(10, 3) is not subtract(3, 10)."""
+    if rng.random() < 0.5:
+        a, b = rng.sample(range(2, 12), 2)
+        code = f"def subtract(a, b):\n    return a - b\n\nprint(subtract({a}, {b}))\nprint(subtract({b}, {a}))"
+        d = a - b
+        return output_question(
+            topic=TOPIC,
+            difficulty=MEDIUM,
+            code=code,
+            distractors=[f"{d}\n{d}", f"{abs(d)}\n{abs(d)}", f"{-d}\n{d}", f"{a + b}\n{a + b}"],
+            explanation=f"The first argument goes into `a` and the second into `b`, so the order matters: {a} - {b} is {d}, but {b} - {a} is {-d}.",
+            rng=rng,
+        )
+    person = rng.choice(PEOPLE)
+    age = rng.randint(12, 18)
+    code = f'def describe(name, age):\n    print(f"{{name}} is {{age}} years old")\n\ndescribe({age}, "{person}")'
+    return output_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        code=code,
+        distractors=[f"{person} is {age} years old", f"{age} is {age} years old", "name is age years old", error_choice("TypeError")],
+        explanation="Arguments are matched to parameters by position. The first argument fills `name` and the second fills `age`, even when they are in the wrong order.",
         rng=rng,
     )
 
 
 # ==========================================================================
-# HARD
+# CHOICE -- HARD (a twist or two steps to trace; lab-style snippets)
 # ==========================================================================
 
-_ADD_FUNCS = [
-    ("add_item", "item", "items"),
-    ("remember", "value", "history"),
-    ("collect", "thing", "bag"),
-    ("log", "entry", "entries"),
+_NOISY = [
+    ("add", "Adding...", "a + b", "Total:"),
+    ("add", "Adding...", "a + b", "Total:"),
+    ("multiply", "Multiplying...", "a * b", "Product:"),
 ]
 
 
 @generator(TOPIC, HARD)
-def gen_mutable_default(rng: random.Random) -> Question:
-    """A list default is created ONCE and shared by every call that uses it."""
-    fname, p, lst = rng.choice(_ADD_FUNCS)
-    if rng.random() < 0.5:
-        x, y, z = rng.sample(range(1, 10), 3)
+def gen_print_inside_and_return(rng: random.Random) -> Question:
+    """A function that prints AND returns: the inner print runs first, then the outer print shows the value."""
+    fn, msg, expr, label = rng.choice(_NOISY)
+    variant = rng.choice(["inline", "stored", "two"])
+    (a, b), (c, d) = _two_ints(rng), _two_ints(rng)
+    head = f'def {fn}(a, b):\n    print("{msg}")\n    return {expr}\n\n'
+    r1, r2 = _apply(expr, a=a, b=b), _apply(expr, a=c, b=d)
+    if variant == "inline":
+        code = head + f'print("{label}", {fn}({a}, {b}))'
+        wrong = [f"{label} {r1}\n{msg}", f"{label} {r1}", msg, f"{msg}\n{r1}"]
+        why = f"Python must call `{fn}({a}, {b})` before it can print, so `{msg}` appears first. Then `print` shows `{label} {r1}`."
+    elif variant == "stored":
+        code = head + f'result = {fn}({a}, {b})\nprint("{label}", result)'
+        wrong = [f"{label} {r1}\n{msg}", f"{label} {r1}", msg, f"{msg}\n{r1}"]
+        why = f"The call runs first and prints `{msg}`; its return value {r1} is stored in `result`, then `print` shows `{label} {r1}`."
     else:
-        x, y, z = (f'"{w}"' for w in rng.sample(["a", "b", "c", "x", "y", "z"], 3))
-    rx, ry, rz = (repr(eval(v)) if isinstance(v, str) else repr(v) for v in (x, y, z))  # noqa: S307
-    shape = rng.choice(["sequential", "sequential", "saved", "explicit", "none_fix", "int_default"])
-    shared = f"def {fname}({p}, {lst}=[]):\n    {lst}.append({p})\n    return {lst}"
-    if shape == "sequential":
-        code = _prog(shared, f"print({fname}({x}))\nprint({fname}({y}))")
-        distractors = [
-            f"[{rx}]\n[{ry}]",
-            f"[{rx}, {ry}]\n[{rx}, {ry}]",
-            f"[{rx}]\n[{rx}]",
-            f"[{ry}]\n[{rx}, {ry}]",
+        joiner = "+" if expr == "a + b" else "*"
+        both = r1 + r2 if joiner == "+" else r1 * r2
+        code = head + f'first = {fn}({a}, {b})\nsecond = {fn}({c}, {d})\nprint("{label}", first {joiner} second)'
+        wrong = [
+            f"{label} {both}\n{msg}\n{msg}",
+            f"{msg}\n{label} {both}",
+            f"{label} {both}",
+            f"{msg}\n{msg}\n{both}",
         ]
-        why = (
-            f"The default list `[]` is created once, when `def` runs, and every call without a "
-            f"`{lst}` argument appends to that SAME list. The second call therefore sees {rx} "
-            f"already in it."
-        )
-    elif shape == "saved":
-        code = _prog(shared, f"first = {fname}({x})\nsecond = {fname}({y})\nprint(first, second)")
-        distractors = [
-            f"[{rx}] [{ry}]",
-            f"[{rx}] [{rx}, {ry}]",
-            f"[{rx}, {ry}] [{ry}]",
-            f"[{ry}] [{rx}, {ry}]",
-        ]
-        why = (
-            "Both calls use the one shared default list and return it, so `first` and `second` "
-            f"are the same list object. By the time it is printed it holds [{rx}, {ry}]."
-        )
-    elif shape == "explicit":
-        code = _prog(shared, f"print({fname}({x}))\nprint({fname}({y}, []))\nprint({fname}({z}))")
-        distractors = [
-            f"[{rx}]\n[{ry}]\n[{rz}]",
-            f"[{rx}]\n[{rx}, {ry}]\n[{rx}, {ry}, {rz}]",
-            f"[{rx}]\n[{ry}]\n[{ry}, {rz}]",
-            f"[{rx}]\n[{rx}, {ry}]\n[{rx}, {rz}]",
-        ]
-        why = (
-            f"The middle call passes its own new list, so it does not touch the shared default. "
-            f"The third call uses the default again, which still holds {rx} from the first call."
-        )
-    elif shape == "none_fix":
-        code = _prog(
-            f"def {fname}({p}, {lst}=None):\n    if {lst} is None:\n        {lst} = []\n"
-            f"    {lst}.append({p})\n    return {lst}",
-            f"print({fname}({x}))\nprint({fname}({y}))",
-        )
-        distractors = [f"[{rx}]\n[{rx}, {ry}]", "None\nNone", f"[{rx}, {ry}]\n[{rx}, {ry}]", TYPE_ERROR]
-        why = (
-            f"Here the default is `None`, and `{lst} = []` runs INSIDE the function, so each call "
-            "builds a brand-new list. This is the standard fix for the mutable-default trap."
-        )
-        return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR)
-    else:
-        start = rng.choice([0, 0, 10])
-        step = rng.randint(1, 5)
-        cname, var = rng.choice([("add_point", "points"), ("next_level", "level"), ("bump", "total")])
-        code = _prog(
-            f"def {cname}({var}={start}):\n    {var} += {step}\n    return {var}",
-            f"print({cname}())\nprint({cname}())",
-        )
-        distractors = [
-            f"{start + step}\n{start + 2 * step}",
-            f"{start}\n{start + step}",
-            f"{start}\n{start}",
-            UNBOUND,
-        ]
-        why = (
-            f"The default {start} is an int, and ints cannot be changed in place: `{var} += {step}` "
-            f"makes the local `{var}` refer to a NEW int. The default stays {start}, so both calls "
-            f"return {start + step}."
-        )
-        return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR)
-    return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR)
-
-
-@generator(TOPIC, HARD)
-def gen_unbound_local(rng: random.Random) -> Question:
-    """Assigning to a name ANYWHERE in a function makes it local everywhere in it."""
-    var = rng.choice(["count", "total", "score", "x"])
-    g = rng.randint(2, 9)
-    k = rng.randint(1, 5)
-    shape = rng.choice(["augmented", "read_then_assign", "read_only", "with_global", "branch"])
-    allow_error = shape in ("augmented", "read_then_assign", "branch")
-    if shape == "augmented":
-        fname = rng.choice(["bump", "increase"])
-        code = _prog(
-            f"{var} = {g}", f"def {fname}():\n    {var} += {k}\n    return {var}", f"print({fname}())"
-        )
-        distractors = [g + k, NAME_ERROR, g, "None"]
-        why = (
-            f"`{var} += {k}` assigns to `{var}`, so Python treats `{var}` as LOCAL for the whole "
-            "function. Reading it to compute the new value fails because the local has no value "
-            "yet: `UnboundLocalError`. Adding `global` would fix it."
-        )
-    elif shape == "read_then_assign":
-        new = g + k
-        fname = rng.choice(["show", "report"])
-        code = _prog(f"{var} = {g}", f"def {fname}():\n    print({var})\n    {var} = {new}", f"{fname}()")
-        distractors = [g, new, NAME_ERROR, f"{g}\n{new}"]
-        why = (
-            f"Because `{var}` is assigned later in `{fname}`, it is local everywhere in the "
-            f"function, even on the line before the assignment. So `print({var})` reads a local "
-            "that has no value yet and raises `UnboundLocalError`."
-        )
-    elif shape == "read_only":
-        fname = rng.choice(["show", "report"])
-        code = _prog(f"{var} = {g}", f"def {fname}():\n    print({var} + {k})", f"{fname}()\nprint({var})")
-        distractors = [UNBOUND, f"{g + k}\n{g + k}", NAME_ERROR, f"{g}\n{g}"]
-        why = (
-            f"`{fname}` only READS `{var}` and never assigns it, so `{var}` is the global {g}. "
-            f"It prints {g + k} and the global is unchanged, so {g} is printed next."
-        )
-    elif shape == "with_global":
-        fname = rng.choice(["bump", "increase"])
-        code = _prog(
-            f"{var} = {g}",
-            f"def {fname}():\n    global {var}\n    {var} += {k}\n    return {var}",
-            f"print({fname}(), {var})",
-        )
-        distractors = [UNBOUND, f"{g + k} {g}", f"{g} {g + k}", NAME_ERROR]
-        why = (
-            f"`global {var}` makes `{var}` inside `{fname}` refer to the global variable, so "
-            f"`+= {k}` updates it to {g + k}. The return value and the global are both {g + k}."
-        )
-    else:
-        flag = rng.random() < 0.4
-        fname = rng.choice(["report", "check"])
-        code = _prog(
-            f"{var} = {g}",
-            f"def {fname}(reset):\n    if reset:\n        {var} = 0\n    return {var}",
-            f"print({fname}({flag}))",
-        )
-        if flag:
-            distractors = [UNBOUND, g, NAME_ERROR, "None"]
-            why = (
-                f"`reset` is True, so the local `{var}` is set to 0 and returned. (With "
-                f"`False` the same code would crash: the assignment makes `{var}` local "
-                "everywhere in the function.)"
-            )
-            allow_error = False
-        else:
-            distractors = [g, 0, NAME_ERROR, "None"]
-            why = (
-                f"Even though `{var} = 0` never runs, its mere presence makes `{var}` local in "
-                f"the whole function. With `reset` False, `return {var}` reads a local that was "
-                "never assigned: `UnboundLocalError`."
-            )
-    return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, HARD)
-def gen_closures(rng: random.Random) -> Question:
-    """Inner functions remember their enclosing variables; ``nonlocal`` rebinds them."""
-    shape = rng.choice(["counter", "counter", "factory", "nonlocal"])
-    if shape == "counter":
-        s1, s2 = rng.sample(range(1, 6), 2)
-        n1, n2 = rng.choice([("first", "second"), ("a", "b"), ("red", "blue")])
-        pattern = rng.choice([(n1, n2, n1), (n2, n1, n1), (n1, n1, n2)])
-        code = _prog(
-            "def make_counter(step):\n    count = 0\n\n    def tick():\n        nonlocal count\n"
-            "        count += step\n        return count\n    return tick",
-            f"{n1} = make_counter({s1})\n{n2} = make_counter({s2})\n{n1}()\n"
-            f"print({', '.join(f'{c}()' for c in pattern)})",
-        )
-        steps = {n1: s1, n2: s2}
-
-        def model(mode: str) -> str:
-            counts = {n1: 0, n2: 0}
-            shared = 0
-            out = []
-            calls = ([] if mode == "skip_bare" else [n1]) + list(pattern)
-            for i, c in enumerate(calls):
-                if mode == "shared":
-                    shared += steps[c]
-                    val = shared
-                elif mode == "reset":
-                    val = steps[c]
-                else:
-                    counts[c] += steps[c]
-                    val = counts[c]
-                if i >= len(calls) - 3:
-                    out.append(str(val))
-            return " ".join(out)
-
-        distractors = [model("skip_bare"), model("shared"), model("reset")]
-        why = (
-            f"Each call to `make_counter` creates a NEW `count` that its `tick` remembers, so "
-            f"`{n1}` counts by {s1} and `{n2}` counts by {s2} independently. The bare `{n1}()` "
-            "call still advances `{n1}`'s count before the print."
-        ).replace("{n1}", n1)
-        return _output(code, HARD, distractors, why, rng)
-    if shape == "factory":
-        maker, param, inner, op, names = rng.choice(
-            [
-                ("make_multiplier", "factor", "multiply", "*", ("double", "triple")),
-                ("make_adder", "amount", "add", "+", ("add_two", "add_ten")),
-            ]
-        )
-        vals = (2, 3) if op == "*" else (2, 10)
-        n = rng.randint(3, 9)
-        order = rng.random() < 0.5
-        call = f"{names[0]}({n}), {names[1]}({n})" if order else f"{names[1]}({n}), {names[0]}({n})"
-        code = _prog(
-            f"def {maker}({param}):\n    def {inner}(n):\n        return n {op} {param}\n    return {inner}",
-            f"{names[0]} = {maker}({vals[0]})\n{names[1]} = {maker}({vals[1]})\nprint({call})",
-        )
-
-        def ap(v):
-            return n * v if op == "*" else n + v
-
-        r0, r1 = ap(vals[0]), ap(vals[1])
-        pair = (r0, r1) if order else (r1, r0)
-        last = r1  # what everyone would get if the 2nd make_* call "overwrote" the first
-        first = r0
-        distractors = [f"{last} {last}", f"{first} {first}", f"{n} {n}", f"{pair[1]} {pair[0]}"]
-        why = (
-            f"Each call to `{maker}` creates a new `{param}`, and the returned `{inner}` "
-            f"remembers its own one: `{names[0]}` keeps {vals[0]} and `{names[1]}` keeps "
-            f"{vals[1]}. The second call does not overwrite the first."
-        )
-        return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR)
-    start, new = rng.sample(range(1, 20), 2)
-    use_nonlocal = rng.random() < 0.5
-    var = rng.choice(["total", "level", "status"])
-    body = f"        nonlocal {var}\n" if use_nonlocal else ""
-    code = _prog(
-        f"def outer():\n    {var} = {start}\n\n    def change():\n{body}        {var} = {new}\n"
-        f"    change()\n    return {var}",
-        "print(outer())",
+        why = f"`{fn}` runs twice and prints `{msg}` each time. Only then does `print` show `{label} {both}`."
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=wrong,
+        explanation=why,
+        rng=rng,
     )
-    if use_nonlocal:
-        distractors = [start, UNBOUND, NAME_ERROR, "None"]
-        why = (
-            f"`nonlocal {var}` makes `{var}` inside `change` refer to `outer`'s variable, so the "
-            f"assignment changes it to {new} before `outer` returns it."
-        )
-    else:
-        distractors = [new, UNBOUND, "None", NAME_ERROR]
-        why = (
-            f"Without `nonlocal`, `{var} = {new}` inside `change` creates a new LOCAL variable "
-            f"of `change`. `outer`'s own `{var}` is untouched, so it returns {start}."
-        )
-    return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR)
+
+
+_BOOL_FUNCS = [
+    ("is_even", "n % 2 == 0"),
+    ("is_even", "n % 2 == 0"),
+    ("is_odd", "n % 2 == 1"),
+    ("is_multiple_of_five", "n % 5 == 0"),
+]
 
 
 @generator(TOPIC, HARD)
-def gen_star_args_binding(rng: random.Random) -> Question:
-    """How arguments bind to ``*args``, keyword-only parameters and ``**kwargs``."""
-    shape = rng.choice(["sep_positional", "sep_keyword", "unpack_call", "kwargs_default", "all_three"])
-    allow_error = False
-    if shape in ("sep_positional", "sep_keyword"):
-        words = rng.sample(["red", "sun", "cat", "map", "box", "owl"], 2)
-        sep = rng.choice(["-", "+", "/"])
-        args = ", ".join(f'"{w}"' for w in words)
-        call = f'join_all({args}, "{sep}")' if shape == "sep_positional" else f'join_all({args}, sep="{sep}")'
-        code = _prog('def join_all(*words, sep=" "):\n    return sep.join(words)', f"print({call})")
-        spaced = " ".join(words)
-        joined = sep.join(words)
-        if shape == "sep_positional":
-            distractors = [joined, TYPE_ERROR, spaced, f"{spaced}{sep}"]
-            why = (
-                f'`*words` swallows EVERY positional argument, including "{sep}". A parameter '
-                "after `*words` can only be set by keyword, so `sep` keeps its default space."
-            )
-        else:
-            distractors = [f"{spaced} {sep}", TYPE_ERROR, spaced, f"{words[0]}{sep}"]
-            why = (
-                f'`sep="{sep}"` is passed by keyword, so it sets the parameter `sep` instead of '
-                f"being collected into `words`. The two words are joined with {sep!r}."
-            )
-    elif shape == "unpack_call":
-        nums = rng.sample(range(1, 10), rng.randint(2, 4))
-        code = _prog(
-            "def count(*args):\n    return len(args)",
-            f"nums = {nums}\nprint(count(nums), count(*nums))",
-        )
-        n = len(nums)
-        distractors = [f"{n} {n}", "1 1", f"{n} 1", TYPE_ERROR]
-        why = (
-            f"`count(nums)` passes ONE argument (the list), so `args` is a 1-item tuple. "
-            f"`count(*nums)` unpacks the list into {n} separate arguments."
-        )
-    elif shape == "kwargs_default":
-        name = rng.choice(["box", "cup", "kite", "lamp"])
-        size = rng.randint(2, 9)
-        color = rng.choice(["red", "blue", "green"])
-        order = rng.random() < 0.5
-        kws = f'color="{color}", size={size}' if order else f'size={size}, color="{color}"'
-        code = _prog(
-            "def make(name, size=1, **extra):\n    print(name, size, extra)", f'make("{name}", {kws})'
-        )
-        both = (
-            f"{{'color': '{color}', 'size': {size}}}" if order else f"{{'size': {size}, 'color': '{color}'}}"
-        )
-        distractors = [
-            f"{name} 1 {both}",
-            f"{name} {size} {both}",
-            TYPE_ERROR,
-            f"{name} {color} {{'size': {size}}}",
-        ]
-        why = (
-            f"`size={size}` matches the named parameter `size`, so it is NOT put in `extra`. "
-            f"Only keywords with no matching parameter end up in `**extra`: {{'color': '{color}'}}."
-        )
+def gen_trace_bool_function(rng: random.Random) -> Question:
+    """Bingo `is_even(n)`: trace an if + return True / return False function over a list of values."""
+    fn, cond = rng.choice(_BOOL_FUNCS)
+    for _ in range(30):
+        values = rng.sample(range(1, 16), 3)
+        results = [bool(_apply(cond, n=v)) for v in values]
+        if len(set(results)) == 2:
+            break
     else:
-        a, b, c = rng.sample(range(1, 10), 3)
-        key = rng.choice(["mode", "flag", "tag"])
-        val = rng.randint(1, 9)
-        code = _prog(
-            "def report(first, *rest, **options):\n    print(first, rest, options)",
-            f"report({a}, {b}, {c}, {key}={val})",
-        )
-        distractors = [
-            f"{a} [{b}, {c}] {{'{key}': {val}}}",
-            f"{a} ({b}, {c}, {val}) {{}}",
-            f"({a}, {b}, {c}) {{'{key}': {val}}}",
-            f"{a} ({a}, {b}, {c}) {{'{key}': {val}}}",
-        ]
-        why = (
-            f"`first` takes {a}, `*rest` collects the remaining positional arguments into the "
-            f"tuple ({b}, {c}), and `**options` collects the keyword argument into a dict."
-        )
-    return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
-
-
-@generator(TOPIC, HARD)
-def gen_trace_calls(rng: random.Random) -> Question:
-    """Trace the order of prints through nested and chained calls."""
-    shape = rng.choice(["nested", "sum", "inner_outer"])
-    if shape in ("nested", "sum"):
-        x = rng.randint(2, 6)
-        (fn, fb, f), (gn, gb, g) = _two_steps(rng, x)
-        defs = (
-            f'def {fn}(n):\n    print("{fn}", n)\n    return {fb}',
-            f'def {gn}(n):\n    print("{gn}", n)\n    return {gb}',
-        )
-        if shape == "nested":
-            code = _prog(*defs, f"print({fn}({gn}({x})))")
-            gx = g(x)
-            ans = f(gx)
-            distractors = [
-                _lines(f"{fn} {gx}", f"{gn} {x}", ans),
-                _lines(f"{fn} {x}", f"{gn} {f(x)}", g(f(x))),
-                _lines(f"{gn} {x}", f"{fn} {gx}"),
-                _lines(f"{gn} {x}", f"{fn} {x}", ans),
-            ]
-            why = (
-                f"Arguments are evaluated before a function runs, so `{gn}({x})` runs first "
-                f"(printing \"{gn} {x}\" and returning {gx}). Then `{fn}({gx})` prints and returns "
-                f"{ans}, which the outer `print` shows last."
-            )
-        else:
-            y = rng.randint(2, 6)
-            code = _prog(*defs, f"print({fn}({x}) + {gn}({y}))")
-            fx, gy = f(x), g(y)
-            distractors = [
-                _lines(f"{gn} {y}", f"{fn} {x}", fx + gy),
-                _lines(fx + gy),
-                _lines(f"{fn} {x}", fx, f"{gn} {y}", gy),
-                _lines(f"{fn} {x}", f"{gn} {y}", x + y),
-            ]
-            why = (
-                f"Python evaluates `+` left to right: `{fn}({x})` runs first and prints, then "
-                f"`{gn}({y})`. Only after both return ({fx} and {gy}) is the sum {fx + gy} printed."
-            )
-        return _output(code, HARD, distractors, why, rng)
-    x = rng.randint(2, 6)
-    k = rng.randint(1, 5)
-    m = rng.randint(2, 3)
-    before = rng.random() < 0.5
-    inner = f'def inner(n):\n    print("inner", n)\n    return n + {k}'
-    if before:
-        outer = f'def outer(n):\n    print("outer", n)\n    return inner(n * {m}) + 1'
+        raise GenerationError("no mix of True and False")
+    words = fn == "is_even" and rng.random() < 0.4
+    if words:  # same idea, but the function answers with words
+        fn = "parity"
+        body = f'    if {cond}:\n        return "even"\n    return "odd"'
+        outs = ["even" if r else "odd" for r in results]
+        flip = ["odd" if r else "even" for r in results]
     else:
-        outer = (
-            f"def outer(n):\n    result = inner(n * {m})\n"
-            '    print("outer", result)\n    return result + 1'
-        )
-    code = _prog(inner, outer, f"print(outer({x}))")
-    r = x * m + k
-    if before:
-        distractors = [
-            _lines(f"inner {x * m}", f"outer {x}", r + 1),
-            _lines(f"outer {x}", f"inner {x}", x + k + 1),
-            _lines(f"outer {x}", f"inner {x * m}", r),
-            _lines(f"outer {x}", f"inner {x * m}"),
-        ]
-        why = (
-            f"`outer({x})` prints first, then calls `inner({x * m})`, which prints and returns "
-            f"{r}. `outer` adds 1 and returns {r + 1}, which is printed last."
-        )
-    else:
-        distractors = [
-            _lines(f"outer {r}", f"inner {x * m}", r + 1),
-            _lines(f"inner {x}", f"outer {x + k}", x + k + 1),
-            _lines(f"inner {x * m}", f"outer {r}", r),
-            _lines(f"inner {x * m}", f"outer {x}", r + 1),
-        ]
-        why = (
-            f"`outer({x})` must finish the call `inner({x * m})` before its own `print` runs, "
-            f"so \"inner {x * m}\" appears first. `inner` returns {r}, `outer` prints it and "
-            f"returns {r + 1}."
-        )
-    return _output(code, HARD, distractors, why, rng)
-
-
-@generator(TOPIC, HARD)
-def gen_default_evaluated_once(rng: random.Random) -> Question:
-    """Default values are computed when ``def`` runs; globals in the body when called."""
-    var, fname, param = rng.choice(
-        [("rate", "scale", "factor"), ("bonus", "add_bonus", "extra"), ("base", "make", "start")]
+        body = f"    if {cond}:\n        return True\n    return False"
+        outs = [str(r) for r in results]
+        flip = [str(not r) for r in results]
+    code = f"def {fn}(n):\n{body}\n\nfor number in {values}:\n    print({fn}(number))"
+    wrong = [
+        "\n".join(flip),
+        "\n".join([flip[0], *outs[1:]]),
+        "\n".join([*outs[:-1], flip[-1]]),
+        "\n".join(outs[::-1]),
+        "\n".join([outs[0], flip[1], outs[2]]),
+    ]
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=wrong,
+        explanation=f"Each loop pass calls `{fn}` with the next number. If the condition is True the function returns right away; otherwise it reaches the last `return`.",
+        rng=rng,
     )
-    if var == "rate":  # multiplication: keep the numbers small
-        old, new = rng.sample(range(2, 7), 2)
-        n = rng.randint(2, 5)
-    else:
-        old, new = rng.sample(range(2, 10), 2)
-        n = rng.randint(2, 9)
-    shape = rng.choice(["default", "body", "both"])
-    if var == "rate":
-        expr_d, expr_b = f"n * {param}", f"n * {var}"
-
-        def calc(v):
-            return n * v
-    else:
-        expr_d, expr_b = f"n + {param}", f"n + {var}"
-
-        def calc(v):
-            return n + v
-
-    if shape == "default":
-        code = _prog(
-            f"{var} = {old}",
-            f"def {fname}(n, {param}={var}):\n    return {expr_d}",
-            f"{var} = {new}\nprint({fname}({n}))",
-        )
-        ans = calc(old)
-        distractors = [calc(new), n, NAME_ERROR, calc(old + new)]
-        why = (
-            f"A default value is evaluated ONCE, when `def` runs. At that moment `{var}` was "
-            f"{old}, so `{param}` defaults to {old} even after `{var}` changes to {new}."
-        )
-    elif shape == "body":
-        code = _prog(
-            f"{var} = {old}", f"def {fname}(n):\n    return {expr_b}", f"{var} = {new}\nprint({fname}({n}))"
-        )
-        ans = calc(new)
-        distractors = [calc(old), n, NAME_ERROR, calc(old + new)]
-        why = (
-            f"The body looks up the global `{var}` each time the function is CALLED. By the "
-            f"time `{fname}({n})` runs, `{var}` is {new}."
-        )
-    else:
-        sym = "*" if var == "rate" else "+"
-        code = _prog(
-            f"{var} = {old}",
-            f"def {fname}(n, {param}={var}):\n    return n {sym} {param} {sym} {var}",
-            f"{var} = {new}\nprint({fname}({n}))",
-        )
-        ans = n * old * new if sym == "*" else n + old + new
-        same_old = n * old * old if sym == "*" else n + 2 * old
-        same_new = n * new * new if sym == "*" else n + 2 * new
-        distractors = [same_new, same_old, NAME_ERROR, calc(new)]
-        why = (
-            f"`{param}` got its default when `def` ran, so it is {old}. The `{var}` in the body is "
-            f"looked up when the function is called, so it is {new}. Result: "
-            f"{n} {sym} {old} {sym} {new} = {ans}."
-        )
-    return _output(code, HARD, _nums(distractors, ans, rng), why, rng, prompt=PRINT_OR_ERROR)
 
 
 @generator(TOPIC, HARD)
-def gen_mutation_and_none(rng: random.Random) -> Question:
-    """Mutating a list argument vs rebinding it vs ints — and functions that return None."""
-    shape = rng.choice(["both", "reassign", "rebind", "len_of_none", "list_and_int"])
-    start = rng.sample(range(1, 10), 2)
-    v = rng.randint(1, 9)
-    fname = rng.choice(["add_twice", "append_twice"])
-    mutator = f"def {fname}(items, value):\n    items.append(value)\n    items.append(value)"
-    after = start + [v, v]
-    allow_error = False
-    if shape == "both":
-        code = _prog(mutator, f"nums = {start}\nresult = {fname}(nums, {v})\nprint(nums, result)")
-        distractors = [f"{start} {after}", f"{after} {after}", f"{start + [v]} None", f"{start} None"]
-        why = (
-            f"`items` refers to the same list as `nums`, so the two `append` calls change `nums` "
-            f"to {after}. The function has no `return`, so `result` is `None`."
-        )
-    elif shape == "reassign":
-        code = _prog(mutator, f"nums = {start}\nnums = {fname}(nums, {v})\nprint(nums)")
-        distractors = [after, start, TYPE_ERROR, start + [v]]
-        why = (
-            f"The list IS changed inside the function, but `{fname}` returns `None`, and "
-            "`nums = ...` then replaces the list with that `None`."
-        )
-    elif shape == "rebind":
-        rname = rng.choice(["with_item", "plus_item"])
-        code = _prog(
-            f"def {rname}(items, value):\n    items = items + [value]\n    return items",
-            f"nums = {start}\nmore = {rname}(nums, {v})\nprint(nums, more)",
-        )
-        distractors = [
-            f"{start + [v]} {start + [v]}",
-            f"{start + [v]} None",
-            f"{start} None",
-            f"{start} {start}",
-        ]
-        why = (
-            "`items + [value]` builds a NEW list and `items = ...` only rebinds the local name, "
-            f"so `nums` is untouched ({start}). The new list {start + [v]} is returned into `more`."
-        )
-    elif shape == "len_of_none":
-        code = _prog(mutator, f"nums = {start}\nprint(len({fname}(nums, {v})))")
-        distractors = [len(after), len(start), "0", "None"]
-        why = (
-            f"`{fname}` changes the list but returns `None`, so the code calls `len(None)`. "
-            "`None` has no length, so Python raises a `TypeError`."
-        )
-        allow_error = True
+def gen_trace_loop_function(rng: random.Random) -> Question:
+    """Bingo `square_list(lst)` / running total inside a function -- sometimes with `return` inside the loop."""
+    nums = rng.sample(range(2, 9), 3)
+    bug = rng.random() < 0.45
+    family = rng.choice(["square", "double", "total"])
+    if family == "total":
+        head = "def total_of(lst):\n    total = 0\n    for n in lst:\n        total += n\n"
+        call = f"print(total_of({nums}))"
+        s = sum(nums)
+        wrong = [s, nums[0], nums[-1], s - nums[0], s - nums[-1], nums[0] + nums[1]]
+        why_ok = "The loop adds every number before `return total` runs once, after the loop."
+        why_bug = "`return` is inside the loop, so the function ends on the first pass and returns only the first number."
+        ret = "return total"
     else:
-        uname = rng.choice(["update", "record"])
-        n0 = rng.randint(1, 5)
-        code = _prog(
-            f"def {uname}(log, count):\n    log.append(count)\n    count += 1",
-            f"data = []\nn = {n0}\n{uname}(data, n)\n{uname}(data, n)\nprint(data, n)",
+        op, name = ("n * n", "square_list") if family == "square" else ("n * 2", "double_list")
+        head = f"def {name}(lst):\n    result = []\n    for n in lst:\n        result.append({op})\n"
+        call = f"print({name}({nums}))"
+        full = [n * n for n in nums] if family == "square" else [n * 2 for n in nums]
+        wrong = [full, nums, full[:1], full[:-1], full[1:], full[0]]
+        why_ok = "The loop builds the whole new list, and `return result` runs once, after the loop has finished."
+        why_bug = "`return result` is inside the loop, so the function ends after the first item and the list holds only one value."
+        ret = "return result"
+    tail = ("        " if bug else "    ") + ret
+    code = f"{head}{tail}\n\n{call}"
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=[str(w) for w in wrong],
+        explanation=why_bug if bug else why_ok,
+        rng=rng,
+    )
+
+
+@generator(TOPIC, HARD)
+def gen_trace_max_of_three(rng: random.Random) -> Question:
+    """Bingo `max_of_three(a, b, c)` without max(): trace two calls, or the version that forgets what it already found."""
+    bug = rng.random() < 0.5
+
+    def buggy(x: int, y: int, z: int) -> int:  # compares c with a instead of with biggest
+        return z if z > x else (y if y > x else x)
+
+    for _ in range(60):
+        first, second = rng.sample(range(1, 20), 3), rng.sample(range(1, 20), 3)
+        if not bug or buggy(*first) != max(first):
+            break
+    else:
+        raise GenerationError("no suitable arguments")
+    cmp_with = "a" if bug else "biggest"  # the bug: compare with `a` instead of with `biggest`
+    body = f"    biggest = a\n    if b > {cmp_with}:\n        biggest = b\n    if c > {cmp_with}:\n        biggest = c\n    return biggest"
+    if bug:
+        why = "The second `if` compares `c` with `a` instead of with `biggest`, so a smaller `c` can overwrite a bigger `b`."
+    else:
+        why = "`biggest` starts as `a`, is replaced by `b` if `b` is bigger, then by `c` if `c` is bigger than the current `biggest`."
+    f1, f2 = ", ".join(map(str, first)), ", ".join(map(str, second))
+    code = f"def max_of_three(a, b, c):\n{body}\n\nprint(max_of_three({f1}))\nprint(max_of_three({f2}))"
+    got = (buggy if bug else lambda x, y, z: max(x, y, z))
+    r1, r2 = got(*first), got(*second)
+    t1, t2 = max(first), max(second)
+    wrong = [
+        f"{t1}\n{t2}",
+        f"{first[0]}\n{second[0]}",
+        f"{r1}\n{t2}",
+        f"{t1}\n{r2}",
+        f"{r2}\n{r1}",
+        f"{first[1]}\n{second[1]}",
+        f"{first[2]}\n{second[2]}",
+    ]
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=wrong,
+        explanation=why,
+        rng=rng,
+    )
+
+
+_BUGGY_FORMULAS = [
+    (
+        "average",
+        "a, b, c",
+        "a + b + c / 3",
+        "(a + b + c) / 3",
+        ["a + (b + c) / 3", "(a + b + c) / 2", "a + b + c // 3", "(a + b + c) / 4", "(a + b + c) - 3", "(a + b + c) * 3"],
+        [(3, 6, 9), (2, 4, 9), (6, 9, 12), (1, 5, 6)],
+        "Division happens before addition, so only `c` is divided by 3.",
+    ),
+    (
+        "fahrenheit_to_celsius",
+        "f",
+        "f - 32 * 5 / 9",
+        "(f - 32) * 5 / 9",
+        ["f - (32 * 5 / 9)", "(f - 32) / 5 * 9", "(f + 32) * 5 / 9", "(f - 32) * 9 / 5", "(f - 32) * 5 / 3"],
+        [(212,), (50,), (86,), (104,)],
+        "Multiplication and division happen before subtraction, so `32 * 5 / 9` is computed first. Parentheses make `f - 32` happen first.",
+    ),
+]
+
+
+@generator(TOPIC, HARD)
+def gen_fix_the_formula(rng: random.Random) -> Question:
+    """The classic order-of-operations bug inside a lab function: which return line fixes it?"""
+    fn, params, bad, good, wrong_exprs, examples, why = rng.choice(_BUGGY_FORMULAS)
+    args = rng.choice(examples)
+    shown = _lab_value(fn, params, bad, args)
+    want = _lab_value(fn, params, good, args)
+    call = f"{fn}({', '.join(repr(x) for x in args)})"
+    wrong = [f"return {w}" for w in wrong_exprs if _lab_value(fn, params, w, args) not in (want, shown)]
+    return build_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=f"`{call}` should return `{want}` but returns `{shown}`. Which line fixes the function?",
+        code=f"def {fn}({params}):\n    return {bad}",
+        correct=f"return {good}",
+        distractors=wrong,
+        explanation=why,
+        rng=rng,
+    )
+
+
+_PREDICATES = [
+    ("is_even", "n % 2 == 0", "even numbers"),
+    ("is_even", "n % 2 == 0", "even numbers"),
+    ("is_odd", "n % 2 == 1", "odd numbers"),
+    ("is_multiple_of_three", "n % 3 == 0", "multiples of 3"),
+]
+
+
+@generator(TOPIC, HARD)
+def gen_function_in_loop(rng: random.Random) -> Question:
+    """A True/False function used in a for loop + if: add up (or count) the numbers that pass."""
+    fn, cond, _ = rng.choice(_PREDICATES)
+    stop = rng.randint(6, 10)
+    count_it = rng.random() < 0.4
+    acc = "count" if count_it else "total"
+    update = f"{acc} += 1" if count_it else f"{acc} += number"
+
+    def snippet(c: str, hi: int, upd: str) -> str:
+        return (
+            f"def {fn}(n):\n    return {c}\n\n{acc} = 0\n"
+            f"for number in range(1, {hi}):\n    if {fn}(number):\n        {upd}\nprint({acc})"
         )
-        distractors = [
-            f"[{n0}, {n0 + 1}] {n0 + 2}",
-            f"[{n0}, {n0 + 1}] {n0}",
-            f"[] {n0}",
-            f"[{n0}, {n0}] {n0 + 2}",
-        ]
-        why = (
-            "`log.append` changes the list object that `data` also refers to, so `data` grows. "
-            f"`count += 1` only rebinds the local `count` to a new int, so `n` stays {n0} — and "
-            f"both calls append {n0}."
+
+    code = snippet(cond, stop, update)
+    other_cond = {"n % 2 == 0": "n % 2 == 1", "n % 2 == 1": "n % 2 == 0", "n % 3 == 0": "n % 3 == 1"}[cond]
+    wrong = [
+        _out(snippet(cond, stop + 1, update)),
+        _out(snippet(other_cond, stop, update)),
+        _out(snippet(cond, stop, f"{acc} += number" if count_it else f"{acc} += 1")),
+        _out(snippet(cond, stop - 1, update)),
+        _out(snippet(cond, stop + 2, update)),
+        _out(snippet(other_cond, stop + 1, update)),
+    ]
+    right = _out(code)
+    if right.isdigit():  # fallbacks: off-by-one answers
+        wrong += [str(int(right) + 1), str(int(right) + 2), str(max(int(right) - 1, 0))]
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=wrong,
+        explanation=f"`range(1, {stop})` gives 1 to {stop - 1}. The loop calls `{fn}` on each number and "
+        + ("counts" if count_it else "adds up")
+        + " the ones where it returns True.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, HARD)
+def gen_print_instead_of_return(rng: random.Random) -> Question:
+    """The classic print-vs-return mistake: the function prints, so the variable gets nothing back."""
+    fn, expr = rng.choice(MATH[:3])
+    a, b = _two_ints(rng)
+    r = _apply(expr, a=a, b=b)
+    label = rng.choice(["Total:", "Result:", "Answer:"])
+    code = f'def {fn}(a, b):\n    print({expr})\n\nresult = {fn}({a}, {b})\nprint("{label}", result)'
+    return output_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        code=code,
+        distractors=[f"{r}\n{label} {r}", f"{label} {r}", str(r), f"{label} None"],
+        explanation=f"`{fn}` prints {r} itself but has no `return`, so it gives nothing back and `result` holds `None`. The second `print` shows `{label} None`.",
+        rng=rng,
+    )
+
+
+# ==========================================================================
+# BLANKS (typed, like the quiz's "fill in multiple blanks")
+# ==========================================================================
+
+
+@generator(TOPIC, EASY, qtype="blanks")
+def gen_blanks_def_and_call(rng: random.Random) -> Question:
+    """The lesson's first example: `def greet():` ... then call it with `greet()`."""
+    fn, msg = rng.choice(NO_ARG_FUNCS)
+    template = f'{blank_mark(1)} {fn}():\n    print("{msg}")\n\n{fn}{blank_mark(2)}'
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=f"Fill in the blanks: define the function, then call it so the program prints `{msg}`.",
+        template=template,
+        blanks=[Blank(["def"], hint="keyword"), Blank(["()"], hint="how to call it")],
+        explanation=f"`def` defines the function, but it only runs when you call it: `{fn}()`.",
+        expect_output=msg,
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="blanks")
+def gen_blanks_param_arg(rng: random.Random) -> Question:
+    """greet_person(name): type the parameter in the def line and the argument in the call."""
+    fn = rng.choice(GREET_FUNCS)
+    param = rng.choice(["name", "name", "player", "student"])
+    person = rng.choice(PEOPLE)
+    tmpl = rng.choice(GREETINGS)
+    line = "print(f\"" + tmpl.replace("NAME", "{" + param + "}") + "\")"
+    template = f"def {fn}({blank_mark(1)}):\n    {line}\n\n{fn}({blank_mark(2)})"
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Fill in the blanks so the program prints `{_fmt(tmpl, person)}`.",
+        template=template,
+        blanks=[
+            Blank([param], hint="the parameter"),
+            Blank([f'"{person}"', f"'{person}'"], hint="the argument", mode="expr"),
+        ],
+        explanation=f"The parameter (`{param}`) goes inside the parentheses of the `def` line. The argument (`\"{person}\"`) is the value you pass when you call the function.",
+        expect_output=_fmt(tmpl, person),
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="blanks")
+def gen_blanks_return_value(rng: random.Random) -> Question:
+    """`return` the result, then print it with a label: `print("Total:", add(1, 1))`."""
+    fn, expr = rng.choice(MATH[:3])
+    a, b = _two_ints(rng)
+    label = rng.choice(_LABELS)
+    result = _apply(expr, a=a, b=b)
+    call = f"{fn}({a}, {b})"
+    calls = [call, f"{fn}({b}, {a})"] if fn in ("add", "multiply") else [call]  # order doesn't matter for + and *
+    template = f'def {fn}(a, b):\n    {blank_mark(1)} {expr}\n\nprint("{label}", {blank_mark(2)})'
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Fill in the blanks so the program prints `{label} {result}` (call `{fn}` with {a} and {b}).",
+        template=template,
+        blanks=[Blank(["return"], hint="keyword"), Blank(calls, hint="a function call", mode="expr")],
+        explanation=f"`return` sends the value back to the caller, and `{call}` is the call whose result `print` displays.",
+        expect_output=f"{label} {result}",
+    )
+
+
+@generator(TOPIC, HARD, qtype="blanks")
+def gen_blanks_lab_formula(rng: random.Random) -> Question:
+    """Mini-Challenge formulas: fahrenheit_to_celsius, celsius_to_fahrenheit or the average with a helper variable."""
+    kind = rng.choice(["f2c", "c2f", "average"])
+    if kind == "f2c":
+        f = rng.choice([212, 50, 86, 104, 68])
+        template = (
+            f"def fahrenheit_to_celsius(f):\n    return (f - {blank_mark(1)}) * {blank_mark(2)} / {blank_mark(3)}"
+            f"\n\nprint(fahrenheit_to_celsius({f}))"
         )
-    return _output(code, HARD, distractors, why, rng, prompt=PRINT_OR_ERROR, allow_error=allow_error)
+        blanks = [Blank(["32"], mode="expr"), Blank(["5"], mode="expr"), Blank(["9"], mode="expr")]
+        prompt = "Fill in the blanks: Celsius = (Fahrenheit - 32) * 5 / 9."
+        out = str((f - 32) * 5 / 9)
+        why = "Subtract 32 first (the parentheses), then multiply by 5 and divide by 9."
+    elif kind == "c2f":
+        c = rng.choice([100, 0, 20, 30, 40])
+        template = (
+            f"def celsius_to_fahrenheit(c):\n    return c * {blank_mark(1)} / {blank_mark(2)} + {blank_mark(3)}"
+            f"\n\nprint(celsius_to_fahrenheit({c}))"
+        )
+        blanks = [Blank(["9"], mode="expr"), Blank(["5"], mode="expr"), Blank(["32"], mode="expr")]
+        prompt = "Fill in the blanks: Fahrenheit = Celsius * 9 / 5 + 32."
+        out = str(c * 9 / 5 + 32)
+        why = "Multiply by 9, divide by 5, then add 32."
+    else:
+        a, b, c = _triple_div3(rng, 2, 20)
+        template = (
+            f"def average(a, b, c):\n    total = {blank_mark(1)}\n    return {blank_mark(2)} / 3"
+            f"\n\nprint(average({a}, {b}, {c}))"
+        )
+        sums = ["a + b + c", "a + c + b", "b + a + c", "b + c + a", "c + a + b", "c + b + a"]
+        blanks = [Blank(sums, hint="add the three numbers", mode="expr"), Blank(["total"], hint="the helper variable")]
+        prompt = "Fill in the blanks so `average` returns the average of the three numbers."
+        out = str((a + b + c) / 3)
+        why = "Store the sum in `total`, then `return total / 3`."
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=prompt,
+        template=template,
+        blanks=blanks,
+        explanation=why,
+        expect_output=out,
+    )
+
+
+@generator(TOPIC, HARD, qtype="blanks")
+def gen_blanks_bool_function_loop(rng: random.Random) -> Question:
+    """Bingo `is_even(n)` used in a loop: type the operator and the call."""
+    fn, op_expr, k = rng.choice(
+        [("is_even", "n {op} 2 == 0", 2), ("is_multiple_of_three", "n {op} 3 == 0", 3), ("is_multiple_of_five", "n {op} 5 == 0", 5)]
+    )
+    stop = rng.randint(k + 2, k + 7)
+    template = (
+        f"def {fn}(n):\n    return {op_expr.format(op=blank_mark(1))}\n\n"
+        f"for number in range(1, {stop}):\n    if {blank_mark(2)}(number):\n        print(number)"
+    )
+    shown = [str(n) for n in range(1, stop) if n % k == 0]
+    if not shown:
+        raise GenerationError("nothing printed")
+    return blanks_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt="Fill in the blanks so the loop prints only the numbers for which the function returns `True`.",
+        template=template,
+        blanks=[Blank(["%"], hint="remainder operator"), Blank([fn], hint="the function name")],
+        explanation="`%` gives the remainder, so `n % 2 == 0` is True for even numbers. The `if` calls the function with `number`.",
+        expect_output="\n".join(shown),
+    )
+
+
+# ==========================================================================
+# MATCH (clicks)
+# ==========================================================================
+
+_TERMS = [
+    ("def", "Starts a function definition"),
+    ("return", "Sends a value back to the caller"),
+    ("parameter", "A variable in the parentheses of the def line"),
+    ("argument", "A value you pass when you call the function"),
+    ("greet()", "A call that runs the function"),
+    ("print()", "A function Python already defined for us"),
+]
+
+
+@generator(TOPIC, EASY, qtype="match")
+def gen_match_terms(rng: random.Random) -> Question:
+    """Match the lesson's vocabulary: def, return, parameter, argument, a call, print()."""
+    pairs = rng.sample(_TERMS, 5)
+    return match_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt="Match each term to what it means in Python functions.",
+        pairs=pairs,
+        explanation="`def` defines a function; the parameter is in the def line; the argument is passed in the call; `return` sends a value back; `print()` and `input()` were already defined for us.",
+        rng=rng,
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="match")
+def gen_match_code_parts(rng: random.Random) -> Question:
+    """Label the parts of `def add(a, b): ... print("Total:", add(1, 1))`."""
+    fn, expr = rng.choice(MATH)
+    a, b = _two_ints(rng)
+    label = rng.choice(_LABELS)
+    code = f'def {fn}(a, b):\n    return {expr}\n\nprint("{label}", {fn}({a}, {b}))'
+    pool = [
+        (f"def {fn}(a, b):", "Function definition line"),
+        (rng.choice(["a", "b"]), "Parameter"),
+        (str(rng.choice([a, b])), "Argument"),
+        (f"{fn}({a}, {b})", "Function call"),
+        (f"return {expr}", "Return statement"),
+    ]
+    return match_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt="Match each part of the code to its name.",
+        code=code,
+        pairs=pool,
+        explanation="The `def` line defines the function; `a` and `b` are its parameters; the values in the call are arguments; `return` sends the result back to the call.",
+        rng=rng,
+    )
+
+
+_FUNCS_DEFS = {
+    "add": ("def add(a, b):\n    return a + b", lambda a, b: a + b, 2),
+    "multiply": ("def multiply(a, b):\n    return a * b", lambda a, b: a * b, 2),
+    "square": ("def square(a):\n    return a ** 2", lambda a: a**2, 1),
+}
+
+
+@generator(TOPIC, MEDIUM, qtype="match")
+def gen_match_call_values(rng: random.Random) -> Question:
+    """Match each call to the value it returns (the math_tools functions)."""
+    names = rng.sample(list(_FUNCS_DEFS), 3)
+    code = "\n\n".join(_FUNCS_DEFS[n][0] for n in names)
+    pairs = []
+    used: set[int] = set()
+    for n in names:
+        _, fn, arity = _FUNCS_DEFS[n]
+        for _ in range(30):
+            args = tuple(rng.randint(2, 9) for _ in range(arity))
+            val = fn(*args)
+            if val not in used:
+                used.add(val)
+                break
+        else:
+            raise GenerationError("no distinct values")
+        pairs.append((f"{n}({', '.join(map(str, args))})", str(val)))
+    return match_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt="Match each call to the value it returns.",
+        code=code,
+        pairs=pairs,
+        extra_options=[str(max(used) + rng.randint(1, 5))],
+        explanation="Each call passes its arguments to the parameters in order, and `return` sends back the result.",
+        rng=rng,
+    )
+
+
+# ==========================================================================
+# CODE (typed, graded in the sandbox)
+# ==========================================================================
+
+# Fahrenheit / Celsius values whose conversions are exact floats.
+_F_VALUES = [212, 32, 41, 50, 59, 68, 77, 86, 95, 104, 14, 23, -40]
+_C_VALUES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 100, -10, -40]
+
+
+def _f2c(f: int) -> float:
+    return (f - 32) * 5 / 9
+
+
+def _c2f(c: int) -> float:
+    return c * 9 / 5 + 32
+
+
+@generator(TOPIC, EASY, qtype="code")
+def gen_code_return_expression(rng: random.Random) -> Question:
+    """Type the expression that goes after `return` in a Mini-Challenge function."""
+    kind = rng.choice(["f2c", "c2f", "average", "area"])
+    if kind == "f2c":
+        var = rng.choice(["f", "temp_f", "fahrenheit"])
+        cases = [({var: v}, _f2c(v)) for v in rng.sample(_F_VALUES, 5)]
+        solution = f"({var} - 32) * 5 / 9"
+        prompt = f"`{var}` holds a temperature in Fahrenheit. Type the expression a function would `return` to get Celsius: subtract 32, multiply by 5, divide by 9."
+        ctx = f"{var} = 212"
+        why = "Subtract 32 first (use parentheses), then multiply by 5 and divide by 9."
+    elif kind == "c2f":
+        var = rng.choice(["c", "temp_c", "celsius"])
+        cases = [({var: v}, _c2f(v)) for v in rng.sample(_C_VALUES, 5)]
+        solution = f"{var} * 9 / 5 + 32"
+        prompt = f"`{var}` holds a temperature in Celsius. Type the expression a function would `return` to get Fahrenheit: multiply by 9, divide by 5, add 32."
+        ctx = f"{var} = 100"
+        why = "Multiply by 9, divide by 5, then add 32."
+    elif kind == "average":
+        triples = [_triple_div3(rng, 1, 21) for _ in range(5)]
+        cases = [({"a": a, "b": b, "c": c}, (a + b + c) / 3) for a, b, c in triples]
+        solution = "(a + b + c) / 3"
+        prompt = "`a`, `b` and `c` hold three numbers. Type the expression a function would `return` for their average."
+        ctx = "a = 2\nb = 4\nc = 9"
+        why = "Add the three numbers inside parentheses, then divide the whole sum by 3."
+    else:
+        sides = rng.sample([1, 2, 3, 4, 5, 7, 10, 1.5, 2.5], 5)
+        cases = [({"side": s}, s * s) for s in sides]
+        solution = "side * side"
+        prompt = "`side` holds the side length of a square. Type the expression a function would `return` for its area."
+        ctx = "side = 5"
+        why = "The area of a square is side times side."
+    return code_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=prompt,
+        task=expression_task(solution, cases, starter=""),
+        explanation=why,
+        code=ctx,
+    )
+
+
+_SIMPLE_FUNCS = [
+    ("square_area", ["side"], "side * side", "the area of a square with that side length"),
+    ("square_perimeter", ["side"], "side * 4", "the perimeter of a square with that side length"),
+    ("double", ["number"], "number * 2", "the number doubled"),
+    ("add", ["a", "b"], "a + b", "the sum of `a` and `b`"),
+    ("multiply", ["a", "b"], "a * b", "`a` times `b`"),
+]
+
+
+@generator(TOPIC, EASY, qtype="code")
+def gen_code_one_line_function(rng: random.Random) -> Question:
+    """Write a one-line function that RETURNS a value (square_area, add, ...)."""
+    name, params, expr, desc = rng.choice(_SIMPLE_FUNCS)
+    arity = len(params)
+    seen: set = set()
+    cases = []
+    while len(cases) < 5:
+        args = tuple(rng.randint(1, 12) for _ in range(arity))
+        if args in seen or (arity == 2 and args[0] == args[1]):
+            continue
+        seen.add(args)
+        cases.append((args, _apply(expr, **dict(zip(params, args)))))
+    solution = f"def {name}({', '.join(params)}):\n    return {expr}"
+    return code_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=f"Write a function `{name}({', '.join(params)})` that returns {desc}. Use `return` (don't print it).",
+        task=function_task(name, solution, cases),
+        explanation=f"The body is `return {expr}`. `return` sends the value back to whoever called `{name}`; `print` would only show it.",
+    )
+
+
+@generator(TOPIC, EASY, qtype="code")
+def gen_code_greet_print(rng: random.Random) -> Question:
+    """The lesson's greet_person(name): the function PRINTS the greeting (checked by its output)."""
+    fn = rng.choice(GREET_FUNCS)
+    tmpl = rng.choice(GREETINGS)
+    names = rng.sample(PEOPLE, 4)
+    cases = [Case(args=[n], out=_fmt(tmpl, n)) for n in names]
+    solution = f"def {fn}(name):\n    print({_fstr(tmpl)})"
+    return code_question(
+        topic=TOPIC,
+        difficulty=EASY,
+        prompt=f'Write a function `{fn}(name)` that prints a greeting for the name it is given. For example, `{fn}("{names[0]}")` prints `{_fmt(tmpl, names[0])}`.',
+        task=function_task(fn, solution, cases),
+        explanation="Put the parameter in an f-string inside `print`. This function prints; it does not need a `return`.",
+    )
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_temperature_function(rng: random.Random) -> Question:
+    """Mini-Challenge: fahrenheit_to_celsius(f) (or the reverse) as a function that returns the result."""
+    if rng.random() < 0.65:
+        fn, param, expr = "fahrenheit_to_celsius", "f", "(f - 32) * 5 / 9"
+        cases = [((v,), _f2c(v)) for v in rng.sample(_F_VALUES, 5)]
+        prompt = "Write a function `fahrenheit_to_celsius(f)` that returns the temperature in Celsius: subtract 32, multiply by 5, divide by 9."
+        why = "`return (f - 32) * 5 / 9`: the parentheses make the subtraction happen first."
+    else:
+        fn, param, expr = "celsius_to_fahrenheit", "c", "c * 9 / 5 + 32"
+        cases = [((v,), _c2f(v)) for v in rng.sample(_C_VALUES, 5)]
+        prompt = "Write a function `celsius_to_fahrenheit(c)` that returns the temperature in Fahrenheit: multiply by 9, divide by 5, add 32."
+        why = "`return c * 9 / 5 + 32`: multiplication and division happen before the addition."
+    solution = f"def {fn}({param}):\n    return {expr}"
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=prompt,
+        task=function_task(fn, solution, cases),
+        explanation=why,
+    )
+
+
+_AVG_FUNCS = [
+    ("average", ["a", "b", "c"]),
+    ("average", ["a", "b", "c"]),
+    ("average_score", ["quiz1", "quiz2", "quiz3"]),
+    ("average_points", ["round1", "round2", "round3"]),
+]
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_average(rng: random.Random) -> Question:
+    """Mini-Challenge: average(a, b, c) returns the average of three numbers."""
+    name, params = rng.choice(_AVG_FUNCS)
+    triples = [(2, 4, 9), (3, 6, 9)]
+    while len(triples) < 5:  # sums that are multiples of 3 keep the expected averages tidy
+        t = tuple(rng.randint(0, 20) for _ in range(3))
+        if t not in triples and sum(t) % 3 == 0:
+            triples.append(t)
+    rng.shuffle(triples)
+    cases = [(t, sum(t) / 3) for t in triples]
+    solution = f"def {name}({', '.join(params)}):\n    return ({' + '.join(params)}) / 3"
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Write a function `{name}({', '.join(params)})` that returns the average of the three numbers.",
+        task=function_task(name, solution, cases),
+        explanation=f"Add all three numbers, then divide the whole sum by 3: `return ({' + '.join(params)}) / 3`. Without the parentheses only the last number would be divided.",
+    )
+
+
+# (function, parameter, expression, description, values that must be tested, other values to draw from)
+_BOOL_TASKS = [
+    ("is_even", "n", "n % 2 == 0", "`n` is even", [0, 1, 2], [3, 4, 7, 10, 13, 22]),
+    ("is_even", "n", "n % 2 == 0", "`n` is even", [0, 1, 2], [3, 4, 7, 10, 13, 22]),
+    ("is_odd", "n", "n % 2 == 1", "`n` is odd", [0, 1, 2], [3, 4, 7, 10, 13, 22]),
+    ("is_multiple_of_five", "n", "n % 5 == 0", "`n` is a multiple of 5", [0, 5, 7], [10, 12, 25, 3, 50, 49]),
+    ("can_drive", "age", "age >= 16", "`age` is 16 or older", [15, 16, 17], [12, 30, 0, 45]),
+    ("is_teen", "age", "13 <= age <= 19", "`age` is from 13 to 19 (inclusive)", [12, 13, 19, 20], [16, 25, 7, 15]),
+    ("is_positive", "n", "n > 0", "`n` is greater than 0", [-1, 0, 1], [-3, 5, 12, -10]),
+]
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_true_false_function(rng: random.Random) -> Question:
+    """Bingo `is_even(n)` and friends: return True or False (boundary values are always tested)."""
+    name, param, expr, desc, must, pool = rng.choice(_BOOL_TASKS)
+    yes = [v for v in pool if _apply(expr, **{param: v})]
+    no = [v for v in pool if not _apply(expr, **{param: v})]
+    values = [*must, rng.choice(yes), rng.choice(no)]  # one more True and one more False case
+    rng.shuffle(values)
+    cases = [((v,), bool(_apply(expr, **{param: v}))) for v in values]
+    solution = f"def {name}({param}):\n    return {expr}"
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=f"Write a function `{name}({param})` that returns `True` if {desc}, otherwise `False`.",
+        task=function_task(name, solution, cases),
+        explanation=f"A comparison already gives `True` or `False`, so `return {expr}` is enough. An `if` with `return True` / `return False` works too.",
+    )
+
+
+_PROGRAM_OPS = [
+    ("add", "a + b", "Total:"),
+    ("add", "a + b", "Total:"),
+    ("multiply", "a * b", "Product:"),
+    ("subtract", "a - b", "Difference:"),
+]
+
+
+@generator(TOPIC, MEDIUM, qtype="code")
+def gen_code_function_and_call_program(rng: random.Random) -> Question:
+    """Define add(a, b), read two numbers with input(), print the label and the returned value."""
+    fn, expr, label = rng.choice(_PROGRAM_OPS)
+    pairs = [(3, 4), (10, 2), (0, 0), (7, 12), (-2, 5)]
+    pairs = rng.sample(pairs, 4)
+    cases = [Case(stdin=[str(a), str(b)], out=f"{label} {_apply(expr, a=a, b=b)}") for a, b in pairs]
+    solution = (
+        f"def {fn}(a, b):\n    return {expr}\n\n"
+        f"first = int(input())\nsecond = int(input())\nprint(\"{label}\", {fn}(first, second))"
+    )
+    return code_question(
+        topic=TOPIC,
+        difficulty=MEDIUM,
+        prompt=(
+            f"Define a function `{fn}(a, b)` that returns `{expr}`. Then read two whole numbers with `input()` "
+            f"(cast them with `int()`) and print `{label}` followed by the result of calling `{fn}` on them, "
+            f"for example `{label} {_apply(expr, a=pairs[0][0], b=pairs[0][1])}` for the inputs {pairs[0][0]} and {pairs[0][1]}."
+        ),
+        task=program_task(
+            solution,
+            cases,
+            starter=f"def {fn}(a, b):\n    ",
+            requires=[(rf"\bdef\s+{fn}\s*\(", f"Define a function named {fn}"), (r"\breturn\b", "Use return inside the function")],
+        ),
+        explanation=f"Define `{fn}` with `return {expr}`, cast both `input()` answers with `int()`, then `print(\"{label}\", {fn}(first, second))`.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_max_of_three(rng: random.Random) -> Question:
+    """Bingo `max_of_three(a, b, c)` without using max() (or min_of_three without min())."""
+    use_max = rng.random() < 0.7
+    name, op, builtin = ("max_of_three", ">", "max") if use_max else ("min_of_three", "<", "min")
+    pick = max if use_max else min
+    # the biggest / smallest sits in every position at least once; plus ties and negatives
+    triples = [(1, 2, 3), (3, 2, 1), (2, 3, 1), (3, 1, 2), (1, 3, 2)]
+    triples += rng.sample([(5, 5, 1), (-1, -5, -3), (7, 7, 7), (4, 9, 9), (6, 2, 6)], 1)
+    triples.append(tuple(rng.sample(range(-9, 30), 3)))
+    rng.shuffle(triples)
+    cases = [(t, pick(t)) for t in triples]
+    solution = (
+        f"def {name}(a, b, c):\n    best = a\n    if b {op} best:\n        best = b\n    if c {op} best:\n        best = c\n    return best"
+    )
+    word = "biggest" if use_max else "smallest"
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=f"Write a function `{name}(a, b, c)` that returns the {word} of three numbers without using `{builtin}()`.",
+        task=function_task(
+            name,
+            solution,
+            cases,
+            forbids=[(rf"\b{builtin}\s*\(", f"Don't use {builtin}() - compare with if statements")],
+        ),
+        explanation=f"Start with `best = a`, replace it with `b` if `b` is {'bigger' if use_max else 'smaller'}, then with `c` if `c` is {'bigger' if use_max else 'smaller'} than the current `best`.",
+    )
+
+
+_LIST_FUNCS = [
+    ("square_list", "returns a new list with each number squared", "result.append(n * n)", lambda xs: [x * x for x in xs], False),
+    ("square_list", "returns a new list with each number squared", "result.append(n * n)", lambda xs: [x * x for x in xs], False),
+    ("double_list", "returns a new list with each number doubled", "result.append(n * 2)", lambda xs: [x * 2 for x in xs], False),
+    ("evens_only", "returns a new list with only the even numbers", "if n % 2 == 0:\n            result.append(n)", lambda xs: [x for x in xs if x % 2 == 0], False),
+    ("total_of", "returns the sum of all the numbers (use a loop, not `sum()`)", "total += n", lambda xs: sum(xs), True),
+]
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_list_function(rng: random.Random) -> Question:
+    """Bingo `square_list(lst)`: a function with a loop that builds / adds up a result and returns it."""
+    name, desc, step, fn, is_total = rng.choice(_LIST_FUNCS)
+    lists = [[1, 2, 3], []]  # always test an ordinary list and the empty list
+    lists += rng.sample([[4], [-2, 5, 0, 8], [2, 7, 10, 3, 6], [9, 1]], 2)
+    lists.append(rng.sample(range(-5, 15), rng.randint(2, 5)))
+    rng.shuffle(lists)
+    cases = [((lst,), fn(lst)) for lst in lists]
+    if is_total:
+        solution = f"def {name}(lst):\n    total = 0\n    for n in lst:\n        {step}\n    return total"
+    else:
+        solution = f"def {name}(lst):\n    result = []\n    for n in lst:\n        {step}\n    return result"
+    forbids = [(r"\bsum\s*\(", "Use a loop instead of sum()")] if is_total else []
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=f"Write a function `{name}(lst)` that {desc}." + ("" if is_total else " Use a loop."),
+        task=function_task(name, solution, cases, requires=[(r"\b(for|while)\b", "Use a loop (for ... in ...)")], forbids=forbids),
+        explanation="Loop over `lst` and "
+        + ("add each number to `total`" if is_total else "build a new list with `append`")
+        + ". Put the `return` after the loop (not inside it), and make sure an empty list still works.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_print_and_return(rng: random.Random) -> Question:
+    """Both appear: the function prints a labelled line AND returns the value."""
+    fn, expr, label = rng.choice(
+        [("add_and_show", "a + b", "Total:"), ("add_and_show", "a + b", "Total:"), ("multiply_and_show", "a * b", "Product:")]
+    )
+    pairs = [(2, 3), (10, 5), (0, 4), (7, 7), (1, 9)]
+    pairs = rng.sample(pairs, 4)
+    cases = [Case(args=[a, b], ret=_apply(expr, a=a, b=b), out=f"{label} {_apply(expr, a=a, b=b)}") for a, b in pairs]
+    solution = f"def {fn}(a, b):\n    result = {expr}\n    print(\"{label}\", result)\n    return result"
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=(
+            f"Write a function `{fn}(a, b)` that prints one line with the label and the result, and also returns the result. "
+            f"For example, `{fn}({pairs[0][0]}, {pairs[0][1]})` prints `{label} {_apply(expr, a=pairs[0][0], b=pairs[0][1])}`."
+        ),
+        task=function_task(fn, solution, cases),
+        explanation="A function can do both: `print` shows the value on the screen, and `return` hands it back to the caller. Store it in a variable so you only compute it once.",
+    )
+
+
+@generator(TOPIC, HARD, qtype="code")
+def gen_code_mini_challenge_trio(rng: random.Random) -> Question:
+    """The whole Mini-Challenge: fahrenheit_to_celsius(f), square_area(side) and average(a, b, c) together."""
+    solution = (
+        "def fahrenheit_to_celsius(f):\n    return (f - 32) * 5 / 9\n\n"
+        "def square_area(side):\n    return side * side\n\n"
+        "def average(a, b, c):\n    return (a + b + c) / 3"
+    )
+    starter = "def fahrenheit_to_celsius(f):\n    \n\ndef square_area(side):\n    \n\ndef average(a, b, c):\n    "
+    cases = []
+    for _ in range(3):
+        f = rng.choice(_F_VALUES)
+        side = rng.choice([3, 4, 5, 6, 9, 10])
+        a, b, c = _triple_div3(rng, 1, 15)
+        after = f"print(fahrenheit_to_celsius({f}))\nprint(square_area({side}))\nprint(average({a}, {b}, {c}))"
+        out = f"{_f2c(f)}\n{side * side}\n{(a + b + c) / 3}"
+        label = f"fahrenheit_to_celsius({f}), square_area({side}), average({a}, {b}, {c})"
+        cases.append(Case(label=label, after=after, out=out))
+    return code_question(
+        topic=TOPIC,
+        difficulty=HARD,
+        prompt=(
+            "Write the three Mini-Challenge functions: `fahrenheit_to_celsius(f)`, `square_area(side)` and "
+            "`average(a, b, c)`, each returning its result. Only write the three `def` blocks (don't print anything)."
+        ),
+        task=program_task(solution, cases, starter=starter, examples=1),
+        explanation="Each function uses `return`: `(f - 32) * 5 / 9`, `side * side` and `(a + b + c) / 3`. The game calls them and prints the results for you.",
+    )

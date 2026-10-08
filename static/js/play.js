@@ -408,8 +408,11 @@ function showJoinForm(env, { code = "", notice = "" } = {}) {
         nameInput.setAttribute("aria-invalid", "true");
         nameInput.focus();
       } else {
-        if (err.reason === "not_found" || err.reason === "locked" || err.reason === "finished") setStatus(err.reason === "not_found" ? "error" : "warn", text);
-        formError.textContent = text;
+        if (err.reason === "not_found" || err.reason === "locked" || err.reason === "finished") {
+          // the status line under the code box already says it (and is an aria-live region)
+          setStatus(err.reason === "not_found" ? "error" : "warn", text);
+          codeInput.scrollIntoView({ block: "center", behavior: "smooth" });
+        } else formError.textContent = text;
         if (err.reason === "not_found") codeInput.focus();
       }
       sfx("wrong");
@@ -678,7 +681,9 @@ class Play {
     const live = state.mode === "live";
     this.pills.q.hidden = !(live && showStats);
     if (live && showStats) this.pills.q.textContent = `Q ${Math.max(0, (state.question_index ?? 0) + 1)}/${state.question_total || "?"}`;
-    this.pills.time.hidden = !showStats || !(state.phase === "question" || state.phase === "running");
+    const timed = showStats && (state.phase === "question" || state.phase === "running");
+    this.pills.time.hidden = !timed;
+    this.bar.parentElement.hidden = !timed;
     this.pills.rank.lastChild.textContent = me.rank ? `#${me.rank}` : "-";
     const scoreNode = this.pills.score.lastChild;
     if (me.score !== this.score) {
@@ -1356,7 +1361,7 @@ class Play {
       "ol",
       { class: "pl-podium", "aria-label": "Podium" },
       order.map((p, i) => {
-        const place = byRank.indexOf(p) + 1;
+        const place = Math.min(3, Math.max(1, p.rank || byRank.indexOf(p) + 1)); // tied players share a step
         const mine = p.name === me.name && p.score === me.score && p.rank === f.rank;
         return el(
           "li",

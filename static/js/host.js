@@ -787,9 +787,10 @@ function codeView(code, { blanks = null, answers = null } = {}) {
   } else {
     body.innerHTML = highlightPython(text);
   }
+  const longest = Math.max(...text.split("\n").map((l) => l.length));
   return el(
     "div",
-    { class: "code-block hs-code" },
+    { class: ["code-block", "hs-code", lines <= 7 && longest <= 46 && "hs-code-lg"] },
     el("pre", { class: "code-gutter", "aria-hidden": "true", text: gutter }),
     el("pre", { class: "code-body", tabindex: "0" }, body)
   );
@@ -825,7 +826,7 @@ function exampleRows(task) {
     el(
       "li",
       { class: "hs-example" },
-      ex.stdin && ex.stdin.length ? el("span", { class: "hs-example-in", text: `input: ${ex.stdin.join(" · ")}` }) : null,
+      ex.stdin && ex.stdin.length && !/^\s*input/i.test(ex.label) ? el("span", { class: "hs-example-in", text: `input: ${ex.stdin.join(" · ")}` }) : null,
       el("code", { class: "hs-example-label", text: ex.label }),
       el("span", { class: "hs-example-arrow", "aria-hidden": "true", text: "→" }),
       el("code", { class: "hs-example-expected", text: ex.expected })
@@ -1193,7 +1194,7 @@ function playerGrid(game, { kickable = true } = {}) {
           },
         })
       : null;
-    return el("li", { class: "hs-tile pop-in", dataset: { id: p.id } }, hsBlook(p.avatar, 2.2), el("span", { class: "hs-tile-name", text: p.name }), kick);
+    return el("li", { class: "hs-tile pop-in", title: p.name, dataset: { id: p.id } }, hsBlook(p.avatar, 2.2), el("span", { class: "hs-tile-name", text: p.name }), kick);
   }
 
   return {
@@ -1393,7 +1394,7 @@ function timerWidget() {
       const secs = Math.max(0, Math.ceil(remaining));
       if (secs !== lastSecs) {
         text.textContent = secs >= 100 ? formatTime(secs) : String(secs);
-        label.textContent = remaining <= 0 ? "time's up" : secs === 1 ? "second" : "seconds";
+        label.textContent = remaining <= 0 ? "time's up" : secs >= 100 ? "min" : secs === 1 ? "second" : "seconds";
         if (beep && lastSecs !== null && secs > 0 && secs <= 5) sfx("tick");
         lastSecs = secs;
       }
@@ -1458,7 +1459,7 @@ function questionView(game, state) {
   const counter = el("span", { class: "hs-qcount", "aria-label": `Question ${state.question_index + 1} of ${state.question_total}` }, el("b", { text: String(state.question_index + 1) }), ` / ${state.question_total}`);
   const screen = el(
     "div",
-    { class: ["hs-question", `hs-q-${q.qtype}`] },
+    { class: ["hs-question", `hs-q-${q.qtype}`, q.code || q.qtype === "code" ? "has-code" : "no-code"] },
     game.header({ left: [counter], right: [game.endButton()] }),
     el("div", { class: "hs-timerrow" }, timer.el, answered),
     el("div", { class: "hs-qgrid" }, el("section", { class: "hs-qcard card" }, metaRow(q), questionBody(q)), el("section", { class: "hs-apanel" }, taskPanel(q))),
@@ -1627,7 +1628,7 @@ function revealView(game, state) {
   const counter = el("span", { class: "hs-qcount" }, el("b", { text: String(state.question_index + 1) }), ` / ${state.question_total}`);
   const screen = el(
     "div",
-    { class: "hs-reveal" },
+    { class: ["hs-reveal", `hs-q-${q.qtype}`, q.code ? "has-code" : "no-code"] },
     game.header({ left: [counter], right: [game.endButton()] }),
     el("div", { class: "hs-revealgrid" }, left, right),
     el("footer", { class: "hs-foot hs-foot-split" }, auto, nextBtn)
@@ -1819,7 +1820,7 @@ function podium(entries) {
       el(
         "li",
         { class: ["hs-podium-slot", `place-${place}`], style: { "--delay": `${[0.45, 0.9, 0.05][slot]}s` } },
-        el("div", { class: "hs-podium-who" }, el("span", { class: "hs-podium-medal", "aria-hidden": "true", text: MEDALS[place] }), hsBlook(p.avatar, place === 1 ? 4.6 : 3.6), el("strong", { class: "hs-podium-name", text: p.name }), el("span", { class: "hs-podium-score", text: `${fmt(p.score)} pts` })),
+        el("div", { class: "hs-podium-who" }, el("span", { class: "hs-podium-medal", "aria-hidden": "true", text: MEDALS[place] }), hsBlook(p.avatar, place === 1 ? 3.8 : 3.1), el("strong", { class: "hs-podium-name", text: p.name }), el("span", { class: "hs-podium-score", text: `${fmt(p.score)} pts` })),
         el("div", { class: "hs-podium-step" }, el("span", { text: String(p.rank) }))
       )
     );
@@ -1863,7 +1864,7 @@ function finishedView(game, state, prev) {
   );
 
   // hardest questions (live) / weakest topics (rush): lowest % correct first, only those somebody answered
-  const hard = [...(summary.questions || [])].filter((x) => x.answered > 0 || live).sort((a, b) => a.correct_pct - b.correct_pct || b.answered - a.answered).slice(0, 5);
+  const hard = [...(summary.questions || [])].filter((x) => x.answered > 0 || live).sort((a, b) => a.correct_pct - b.correct_pct || b.answered - a.answered).slice(0, 4);
   const hardList = el(
     "ol",
     { class: "hs-hard" },
@@ -1872,7 +1873,7 @@ function finishedView(game, state, prev) {
         "li",
         { class: "hs-hard-row" },
         el("span", { class: ["hs-hard-pct", x.correct_pct < 40 ? "is-low" : x.correct_pct < 70 ? "is-mid" : "is-high"], text: `${x.correct_pct}%` }),
-        el("span", { class: "hs-hard-text" }, el("span", { class: "hs-hard-q" }, live ? el("b", { text: `Q${x.index} ` }) : null, el("span", { class: "hs-hard-prompt", text: x.prompt })), el("span", { class: "hs-hard-meta", text: live ? `${QTYPE_LABEL[x.qtype] || x.qtype} · ${x.correct} of ${x.answered} correct${x.avg_ms ? ` · avg ${(x.avg_ms / 1000).toFixed(1)} s` : ""}` : `${x.correct} of ${x.answered} correct${x.avg_ms ? ` · avg ${(x.avg_ms / 1000).toFixed(1)} s` : ""}` }))
+        el("span", { class: "hs-hard-text" }, el("span", { class: "hs-hard-q" }, live ? el("b", { text: `Q${x.index} ` }) : null, el("span", { class: "hs-hard-prompt", text: String(x.prompt || "").replace(/`/g, "") })), el("span", { class: "hs-hard-meta", text: live ? `${QTYPE_LABEL[x.qtype] || x.qtype} · ${x.correct} of ${x.answered} correct${x.avg_ms ? ` · avg ${(x.avg_ms / 1000).toFixed(1)} s` : ""}` : `${x.correct} of ${x.answered} correct${x.avg_ms ? ` · avg ${(x.avg_ms / 1000).toFixed(1)} s` : ""}` }))
       )
     )
   );
