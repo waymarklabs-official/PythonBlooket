@@ -23,6 +23,9 @@
  *       { key: 'goal', label: 'Gold goal', choices: [[1000, '1,000'], [5000, '5,000']], default: 1000 },
  *     ],
  *     scoreLabel: 'Gold',            // label under the big number on RESULTS / high scores
+ *     questionTypes: ['choice', 'match', 'blanks'],  // optional: the question formats this mode can
+ *                                    // show (default: all four, see ctx.ask). The player's
+ *                                    // "Question types" choice is intersected with it.
  *     async play(ctx) { ...; return { score, won, headline, details } },
  *   };
  *
@@ -48,7 +51,8 @@
  *                  the rest of the viewport, and has NO padding — use a
  *                  `<div class="game-stage">` child for a centred, padded column
  *                  (max-width 940px), or lay out your own full-bleed scene.
- *   ctx.settings   { topics: [ids], difficulty: 1|2|3|'mixed', playerName, avatar, options: {key: value} }
+ *   ctx.settings   { topics: [ids], difficulty: 1|2|3|'mixed', types: 'mixed'|'choice'|'typing'|[qtypes],
+ *                    playerName, avatar, options: {key: value} }
  *   ctx.topics     topic metadata array from /api/topics: [{id, name, icon, description, generators}]
  *   ctx.difficulties [{id: 1, label: 'Easy', points: 100}, {id: 2, ...250}, {id: 3, ...500}]
  *   ctx.player     { name, avatar, color }   (color = avatar circle background)
@@ -57,21 +61,33 @@
  *
  *   ctx.ask(container, opts?) -> Promise<AskResult>
  *     Clears `container` and renders a question card in it (topic chip, difficulty
- *     badge with points, prompt, highlighted code, 4 coloured answer buttons, optional
- *     countdown bar). Keys 1-4 pick an answer. After the server replies it highlights
- *     the right answer (green ✓) and a wrong pick (red ✗), shows "Correct! +N" or
- *     "Not quite" + the explanation and plays a sound. Then:
- *       - correct: auto-continues after opts.correctDelay ms (default 1200); a click on
- *         the card, Enter or Space skips the wait;
+ *     badge with points, prompt, highlighted code, the answer area, optional countdown
+ *     bar). The answer area depends on the question's format (q.qtype, see questions.js):
+ *       choice  4 coloured answer buttons; keys 1-4 pick one
+ *       blanks  the code snippet with <input> boxes to type into (Enter = next blank)
+ *       match   rows of "item -> dropdown"
+ *       code    "write the code": examples, an editor, Run examples and Submit
+ *     Which formats appear is decided by ctx.settings.types (the feed asks the server).
+ *     After the server replies it marks the answer (right = green ✓, wrong = red ✗, the
+ *     model answer is shown for the typed formats), shows "Correct! +N" or "Not quite" +
+ *     the explanation and plays a sound. Then:
+ *       - correct: auto-continues after opts.correctDelay ms (default 1200; typed answers wait
+ *         at least 2.5 s so the model solution can be read); a click on the card (on the banner
+ *         for typed formats), Enter or Space skips the wait;
  *       - wrong: waits for "Continue ▶" (click / Enter / Space), unless opts.wrongDelay
- *         is a number -> auto-continue after that many ms (click/Enter/Space skips).
+ *         is a number -> auto-continue after that many ms (at least 3.5 s for blanks / 6 s for
+ *         code); click/Enter/Space skips.
+ *     Enter / Space never skip while a text field or the editor has focus.
  *     The card stays on screen after resolving; the next ask() (or the mode) replaces it.
  *     Calling ask() again on the same container while an earlier ask() there is still
  *     pending supersedes it: the old card's listeners/timers are removed and its
  *     promise never settles (so don't await it). Hotkeys only act on cards still in the DOM.
  *     opts:
  *       difficulty    1|2|3|'mixed' — overrides ctx.settings.difficulty for this question
- *       timeLimit     seconds; on expiry the question counts as wrong with chosen=null,
+ *       timeLimit     seconds for a MULTIPLE-CHOICE question. Other formats get
+ *                     round(timeLimit * q.time_factor) (blanks / match x2, code x6) but at least
+ *                     20 s (60 s for code), see questionTimeLimit(). On expiry whatever is typed
+ *                     or picked so far is submitted (a half-finished answer is simply wrong):
  *                     timedOut=true. Last 5 s tick and turn red.
  *       correctDelay  ms (default 1200)
  *       wrongDelay    ms or undefined (undefined = wait for the Continue button)
@@ -79,22 +95,30 @@
  *                     "Correct! +250" banner (e.g. "+1 lap", "⚔️ 250 damage")
  *       onAnswered    fn(result) called the instant the server replies, before the
  *                     continue delay (good for updating HUDs immediately)
- *     The ask card is width:100% of `container`; size the container to taste.
+ *     The ask card is width:100% of `container`; size the container to taste (typed formats
+ *     are taller than multiple choice: don't give the container a fixed height).
  *     AskResult: { correct: bool,
  *                  points: number — the question's base points (Easy 100 / Medium 250 /
  *                          Hard 500) if correct, else 0. Modes apply their own scoring
  *                          (e.g. gold = points * multiplier) — the engine does not.
- *                  question: {id, topic, topic_name, topic_icon, difficulty,
- *                             difficulty_label, points, prompt, code, choices},
- *                  chosen: index|null, answer: index, timedOut: bool,
- *                  timeMs: number, explanation: string }
+ *                  question: the public question {id, topic, topic_name, topic_icon, difficulty,
+ *                             difficulty_label, points, prompt, code, qtype, choices, blanks?,
+ *                             match?, task?, time_factor},
+ *                  qtype: 'choice'|'blanks'|'match'|'code',
+ *                  response: what was submitted (index | null, string[], (index|null)[], code string),
+ *                  chosen: index|null (multiple choice only, else null),
+ *                  answer: correct index (multiple choice), else -1,
+ *                  reveal: the server's model answer ({answer} | {blanks, accepted} | {match} | {solution}),
+ *                  detail: per-blank / per-row marks or the code-run report ({} for choice),
+ *                  timedOut: bool, timeMs: number, explanation: string }
  *     Rejects with an Error named 'AbortError' if the game is quit (or finished)
  *     while it is pending. Network problems show a retry message inside the card and
  *     retry automatically; they never reject. A question the server no longer knows
  *     (404) is silently replaced by a fresh one.
  *
- *   Answer hotkeys (1-4, Enter/Space to continue) are ignored while a modal dialog is open,
- *   while typing in an input, or with modifier keys held — modes can use other keys freely.
+ *   Answer hotkeys (1-4 on multiple choice, Enter/Space to continue) are ignored while a modal
+ *   dialog is open, while typing in an input, or with modifier keys held — modes can use other
+ *   keys freely.
  *
  *   ctx.stats  live object, updated by every ask() (don't mutate it; it feeds RESULTS):
  *     { answered, correct, streak, bestStreak, pointsEarned, totalTimeMs,
@@ -142,7 +166,8 @@
  * so text placed directly on it should be white.
  */
 
-import { submitAnswer } from "./api.js";
+import { runCode, submitAnswer } from "./api.js";
+import { createQuestionView } from "./questions.js";
 import {
   AVATARS,
   animateNumber,
@@ -161,8 +186,11 @@ import {
   toast,
 } from "./ui.js";
 
-const DIFF_STARS = { 1: "★", 2: "★★", 3: "★★★" };
-const ANSWER_CLASSES = ["answer-yellow", "answer-blue", "answer-green", "answer-red"];
+// Typed formats get more time and more reading time than a multiple-choice question.
+const TIME_FACTORS = { blanks: 2, match: 2, code: 6 };
+const MIN_TIME_LIMIT = { blanks: 20, match: 20, code: 60 }; // seconds
+const MIN_CORRECT_DELAY = { blanks: 2500, match: 1500, code: 2500 }; // ms: read the model answer
+const MIN_WRONG_DELAY = { blanks: 3500, code: 6000 }; // ms, only when a mode auto-continues wrong answers
 const RETRY_NEW_QUESTION = Symbol("retry-new-question");
 const never = () => new Promise(() => {});
 
@@ -178,6 +206,16 @@ export function abortError(message = "Game ended") {
 
 export function isAbortError(err) {
   return !!err && err.name === "AbortError";
+}
+
+/** Seconds a question gets when a mode asks for `timeLimit` seconds per multiple-choice question (0 = no timer). */
+export function questionTimeLimit(q, timeLimit) {
+  const seconds = Number(timeLimit) || 0;
+  const type = (q && q.qtype) || "choice";
+  if (seconds <= 0) return 0;
+  if (type === "choice") return seconds;
+  const factor = Number(q.time_factor) || TIME_FACTORS[type] || 1;
+  return Math.max(MIN_TIME_LIMIT[type] || 0, Math.round(seconds * factor));
 }
 
 function newStats() {
@@ -511,66 +549,43 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
     });
   }
 
-  function difficultyBadge(q) {
+  /** The countdown bar that goes into the view's timer slot. */
+  function buildTimer(limit) {
     return el(
-      "span",
-      { class: `diff-badge diff-${q.difficulty}`, title: `${q.difficulty_label} question worth ${q.points} points` },
-      el("span", { class: "diff-stars", "aria-hidden": "true", text: DIFF_STARS[q.difficulty] || "★" }),
-      el("span", { text: `${q.difficulty_label} · ${q.points}` })
+      "div",
+      { class: "q-timer", role: "timer", "aria-label": "Time left" },
+      el("div", { class: "q-timer-track" }, el("div", { class: "q-timer-fill" })),
+      el("span", { class: "q-timer-text", text: formatTime(limit) })
     );
   }
 
-  function buildCard(q, timeLimit) {
-    const answers = q.choices.map((choice, i) =>
-      el(
-        "button",
-        {
-          class: ["answer", ANSWER_CLASSES[i % 4]],
-          type: "button",
-          dataset: { index: i },
-          "aria-label": `Answer ${i + 1}: ${choice}`,
-          style: { "--i": i },
-        },
-        el("span", { class: "answer-key", "aria-hidden": "true" }, el("b", { text: String(i + 1) })),
-        el("span", { class: "answer-text", text: choice }),
-        el("span", { class: "answer-mark", "aria-hidden": "true" })
-      )
+  /** "Checking your answer…" banner (typed answers can take a moment: code runs in a sandbox). */
+  function checkingBanner(qtype) {
+    return el(
+      "div",
+      { class: "q-banner q-banner-warn", role: "status" },
+      el("span", { class: "spinner qv-spin", "aria-hidden": "true" }),
+      el("strong", { text: qtype === "code" ? "Running your code against the tests…" : "Checking your answer…" })
     );
-    const timer = timeLimit
-      ? el(
-          "div",
-          { class: "q-timer", role: "timer", "aria-label": "Time left" },
-          el("div", { class: "q-timer-track" }, el("div", { class: "q-timer-fill" })),
-          el("span", { class: "q-timer-text", text: formatTime(timeLimit) })
-        )
-      : null;
-    const feedback = el("div", { class: "q-feedback", "aria-live": "polite" });
-    const card = el(
-      "section",
-      { class: "q-card pop-in", tabindex: "-1", "aria-label": `${q.difficulty_label} ${q.topic_name} question` },
-      el(
-        "div",
-        { class: "q-meta" },
-        el("span", { class: "topic-chip" }, el("span", { "aria-hidden": "true", text: q.topic_icon || "🐍" }), " ", q.topic_name || q.topic),
-        difficultyBadge(q)
-      ),
-      timer,
-      el("div", { class: "q-prompt", html: renderInlineCode(q.prompt) }),
-      q.code ? codeBlock(q.code) : null,
-      el("div", { class: "answers" }, answers),
-      feedback
-    );
-    return { card, answers, timer, feedback };
   }
 
   function presentQuestion(container, q, o, token) {
-    const { card, answers, timer, feedback } = buildCard(q, o.timeLimit);
+    const qtype = q.qtype || "choice";
+    const limit = questionTimeLimit(q, o.timeLimit);
+    let onSubmitted = () => {};
+    let timingOut = false;
+    const view = createQuestionView(q, {
+      onSubmit: (response) => onSubmitted(response, timingOut),
+      onRun: qtype === "code" ? (code) => runCode(q.id, code) : undefined,
+      hotkeys: true,
+      showMeta: true,
+    });
+    const card = view.el;
+    const feedback = view.feedbackSlot;
+    const timer = limit ? buildTimer(limit) : null;
+    if (timer) view.timerSlot.append(timer);
     container.replaceChildren(card);
-    try {
-      card.focus({ preventScroll: true });
-    } catch {
-      /* ignore */
-    }
+    view.focus();
 
     const sc = scope();
     token.cleanups.push(() => sc.clear());
@@ -578,6 +593,8 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
     let locked = false;
 
     return waitScoped(sc, (resolve, reject) => {
+      sc.add(() => view.destroy());
+
       // ---- countdown -------------------------------------------------------
       let timeoutId = null;
       let deadline = 0;
@@ -587,14 +604,14 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
         timeoutId = null;
         if (timer) {
           const fill = timer.querySelector(".q-timer-fill");
-          const frac = Math.max(0, (deadline - performance.now()) / (o.timeLimit * 1000));
+          const frac = Math.max(0, (deadline - performance.now()) / (limit * 1000));
           fill.style.setProperty("transition", "none", "important");
           fill.style.transform = `scaleX(${frac})`;
           timer.classList.add("stopped");
         }
       };
-      if (timer && o.timeLimit > 0) {
-        deadline = performance.now() + o.timeLimit * 1000;
+      if (timer && limit > 0) {
+        deadline = performance.now() + limit * 1000;
         const fill = timer.querySelector(".q-timer-fill");
         const text = timer.querySelector(".q-timer-text");
         requestAnimationFrame(() =>
@@ -609,35 +626,38 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
           if (locked) return window.clearInterval(ticker);
           const left = (deadline - performance.now()) / 1000;
           text.textContent = formatTime(left);
-          const frac = left / o.timeLimit;
+          const frac = left / limit;
           timer.classList.toggle("warn", frac <= 0.5 && left > 5);
           timer.classList.toggle("urgent", left <= 5);
           const whole = Math.ceil(left);
           if (left <= 5 && whole < lastTick && whole > 0) sfx("tick");
           lastTick = whole;
         }, 200);
-        timeoutId = window.setTimeout(() => choose(null, true), o.timeLimit * 1000);
+        // Out of time: hand in whatever is typed / picked so far (never throw it away silently).
+        timeoutId = window.setTimeout(() => {
+          timingOut = true;
+          view.submit();
+        }, limit * 1000);
         sc.add(() => timeoutId && window.clearTimeout(timeoutId));
       }
 
       // ---- answering -------------------------------------------------------
-      const choose = async (index, timedOut = false) => {
+      // The view calls this once, when the player commits (click, Submit, Enter, or the timer).
+      onSubmitted = async (response, timedOut) => {
         if (locked) return;
         locked = true;
         const timeMs = Math.round(performance.now() - t0);
         stopTimer();
         card.classList.add("answering");
-        for (const b of answers) b.disabled = true;
-        if (index !== null) {
-          answers[index].classList.add("chosen");
-          sfx("click");
-        }
 
         let res;
         let failures = 0;
+        // typed answers: say so if grading takes a moment
+        const checking = qtype === "choice" ? 0 : window.setTimeout(() => feedback.replaceChildren(checkingBanner(qtype)), 350);
+        sc.add(() => window.clearTimeout(checking));
         for (;;) {
           try {
-            res = await abortable(submitAnswer(q.id, index));
+            res = await abortable(submitAnswer(q.id, response));
             if (token.cancelled) return;
             break;
           } catch (err) {
@@ -658,14 +678,19 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
             }
           }
         }
+        window.clearTimeout(checking);
         if (controller.signal.aborted) return reject(abortError());
 
         const result = {
           correct: !!res.correct,
           points: Number(res.points) || 0,
           question: q,
-          chosen: index,
-          answer: res.answer,
+          qtype,
+          response,
+          chosen: qtype === "choice" && Number.isInteger(response) ? response : null,
+          answer: Number.isInteger(res.answer) ? res.answer : -1,
+          reveal: res.reveal && typeof res.reveal === "object" ? res.reveal : {},
+          detail: res.detail && typeof res.detail === "object" ? res.detail : {},
           timedOut,
           timeMs,
           explanation: res.explanation || "",
@@ -683,36 +708,21 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
         awaitContinue(result).then(() => resolve(result), reject);
       };
 
-      sc.on(card, "click", (e) => {
-        const btn = e.target.closest(".answer");
-        if (!btn || locked || !card.contains(btn)) return;
-        choose(Number(btn.dataset.index));
-      });
-      sc.on(document, "keydown", (e) => {
-        if (locked || !card.isConnected || !hotkeyAllowed(e)) return;
-        const n = Number(e.key);
-        if (Number.isInteger(n) && n >= 1 && n <= answers.length) {
-          e.preventDefault();
-          choose(n - 1);
-        }
-      });
-
       // ---- outcome + continue ---------------------------------------------
       function showOutcome(r) {
         card.classList.remove("answering");
-        card.classList.add("answered", r.correct ? "is-correct" : "is-wrong");
-        answers.forEach((b, i) => {
-          b.classList.remove("chosen");
-          if (i === r.answer) {
-            b.classList.add("correct");
-            b.querySelector(".answer-mark").textContent = "✓";
-          } else if (i === r.chosen) {
-            b.classList.add("wrong");
-            b.querySelector(".answer-mark").textContent = "✗";
-          } else b.classList.add("dim");
-          if (i === r.answer) b.setAttribute("aria-label", `${b.getAttribute("aria-label")} (correct answer)`);
-          else if (i === r.chosen) b.setAttribute("aria-label", `${b.getAttribute("aria-label")} (your answer, wrong)`);
-        });
+        view.showResult(
+          { correct: r.correct, reveal: r.reveal.answer === undefined && r.answer >= 0 ? { ...r.reveal, answer: r.answer } : r.reveal, detail: r.detail, explanation: r.explanation, points: r.points },
+          { response: r.response }
+        );
+        // leave the (now read-only) text field so Enter / Space can skip, and the phone keyboard closes
+        if (qtype !== "choice") {
+          try {
+            card.focus({ preventScroll: true });
+          } catch {
+            /* ignore */
+          }
+        }
 
         let title;
         if (r.correct) {
@@ -740,11 +750,18 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
           );
         }
         const streak = r.correct && stats.streak >= 3 ? el("span", { class: "q-streak pulse", text: `🔥 ${stats.streak} in a row!` }) : null;
+        // "2 of 3 blanks right" for a partly right typed answer
+        const marks = qtype === "blanks" ? r.detail.blanks : qtype === "match" ? r.detail.match : null;
+        const score =
+          !r.correct && Array.isArray(marks) && marks.some(Boolean)
+            ? el("p", { class: "qv-score-line", text: `${marks.filter(Boolean).length} of ${marks.length} ${qtype === "blanks" ? "blanks" : "matches"} right.` })
+            : null;
         feedback.replaceChildren(
           el(
             "div",
             { class: ["q-banner", r.correct ? "q-banner-correct" : "q-banner-wrong"] },
             el("div", { class: "q-banner-head" }, title, streak),
+            score,
             r.explanation ? el("p", { class: "q-explanation", html: renderInlineCode(r.explanation) }) : null
           )
         );
@@ -766,7 +783,9 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
         return waitScoped(csc, (resolveContinue) => {
           const go = () => settledEnough() && resolveContinue();
           const banner = feedback.querySelector(".q-banner");
-          const auto = r.correct ? Number(o.correctDelay) : typeof o.wrongDelay === "number" ? o.wrongDelay : null;
+          let auto = r.correct ? Number(o.correctDelay) : typeof o.wrongDelay === "number" ? o.wrongDelay : null;
+          // typed answers come with a model answer to read: give it some time
+          if (auto !== null && Number.isFinite(auto)) auto = Math.max(auto, (r.correct ? MIN_CORRECT_DELAY : MIN_WRONG_DELAY)[qtype] || 0);
           const actions = el("div", { class: "q-actions" });
           banner.append(actions);
           if (auto !== null && Number.isFinite(auto)) {
@@ -782,7 +801,8 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
               bar
             );
             csc.timeout(resolveContinue, ms);
-            csc.on(card, "click", () => go());
+            // typed answers: only the banner skips (the player may want to select / read the model answer)
+            csc.on(qtype === "choice" ? card : feedback, "click", () => go());
           } else {
             const btn = el("button", { class: "btn btn-blue q-continue", type: "button", text: "Continue ▶", onClick: () => resolveContinue() });
             actions.append(btn);
@@ -807,7 +827,6 @@ export function createGameContext({ root, mode, settings, topics = [], difficult
           }
         });
       }
-
     });
   }
 

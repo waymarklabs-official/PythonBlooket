@@ -235,6 +235,8 @@ export default {
     "Every correct answer in a row adds ×0.25 to your combo multiplier (max ×3), and answering within 5 seconds earns a +50% speed bonus (+25% within 10 s).\n" +
     "Careful: a wrong answer costs 5 seconds and resets your combo!",
   difficultySelectable: true,
+  // a code-writing question would eat a 60-second game: only quick formats here
+  questionTypes: ["choice", "match", "blanks"],
   options: [
     {
       key: "duration",

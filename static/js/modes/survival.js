@@ -703,7 +703,7 @@ export default {
   icon: "❤️",
   tagline: "Three lives. Questions get harder. How long can you last?",
   description:
-    "Answer endless Python questions with 3 lives. A wrong answer (or running out of time) costs a life and drops you down a tier — lose them all and it's game over.\n" +
+    "Answer endless questions with 3 lives. A wrong answer (or running out of time) costs a life and drops you down a tier — lose them all and it's game over.\n" +
     "Get 3 right in a row to level up: Easy → Medium → Hard. Harder questions are worth more: Easy 100, Medium 250, Hard 500 points.\n" +
     "Streaks multiply your points: ×1.5 from 3 in a row, ×2 from 6, ×3 from 10. Every 10 correct answers earns a bonus life (up to 5).",
   difficultySelectable: false,

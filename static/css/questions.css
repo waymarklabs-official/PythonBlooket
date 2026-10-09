@@ -1,0 +1,843 @@
+/* ==========================================================================
+   PyBlooket -- question formats (static/js/questions.js)
+   multiple choice keeps its look from style.css (.answer ...); everything new
+   here is prefixed .qv- so it cannot clash with the shared rules.
+   ========================================================================== */
+
+/* ------------------------------------------------------------- shared -- */
+
+.qv-meta-left {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.qv-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.3em 0.85em;
+  border-radius: 999px;
+  background: #e0efff;
+  color: #124a96;
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+
+.qv-body {
+  display: block;
+}
+
+.qv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 14px;
+}
+
+.qv-actions .btn {
+  min-height: 48px;
+}
+
+.qv-hint,
+.qv-hint-block {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--c-muted);
+}
+
+.qv-hint-block {
+  margin-top: 8px;
+}
+
+.qv-key-title {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-muted);
+}
+
+.qv-locked .qv-actions,
+.qv-locked .qv-hint-block {
+  display: none;
+}
+
+.qv-locked .qv-input:focus {
+  box-shadow: none;
+  outline: 0;
+}
+
+/* The format blocks use 16px text on purpose: iOS zooms into inputs below 16px. */
+.code-block.qv-code16 {
+  font-size: 16px;
+  line-height: 24px;
+}
+
+/* ------------------------------------------------------------- blanks -- */
+
+.qv-blanks-code .code-body {
+  white-space: pre;
+  font-variant-ligatures: none;
+}
+
+.qv-blank {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  height: 24px;
+}
+
+.qv-input {
+  box-sizing: border-box;
+  height: 24px;
+  margin: 0 1px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 2px solid var(--c-yellow);
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  caret-color: var(--c-yellow);
+  outline: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.qv-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+.qv-input:focus {
+  background: rgba(255, 194, 26, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 194, 26, 0.55);
+}
+
+.qv-input:focus-visible {
+  outline: 3px solid var(--c-yellow);
+  outline-offset: 1px;
+}
+
+.qv-blank.is-ok .qv-input {
+  border-bottom-color: #4ade80;
+  background: rgba(74, 222, 128, 0.25);
+}
+
+.qv-blank.is-bad .qv-input {
+  border-bottom-color: #ff6b7d;
+  background: rgba(255, 107, 125, 0.28);
+}
+
+.qv-blank.is-ok::after,
+.qv-blank.is-bad::after {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+  font: 900 11px/1 var(--font-body);
+}
+
+.qv-blank.is-ok::after {
+  content: "✓";
+  background: var(--c-green);
+}
+
+.qv-blank.is-bad::after {
+  content: "✗";
+  background: var(--c-red);
+}
+
+.qv-key {
+  margin-top: 14px;
+}
+
+.qv-key .code-block {
+  margin-bottom: 0;
+}
+
+.qv-fill {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: rgba(74, 222, 128, 0.22);
+  box-shadow: inset 0 -2px 0 #4ade80;
+}
+
+/* -------------------------------------------------------------- match -- */
+
+.qv-match {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.qv-match-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-card-2);
+}
+
+.qv-match-item {
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.qv-match-item.is-code {
+  font-family: var(--font-mono);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.qv-match-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.qv-select {
+  flex: 1;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 38px 8px 12px;
+  border: 2px solid #cbbdf0;
+  border-radius: 12px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='M3 6l5 5 5-5' fill='none' stroke='%235b21b6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: 0 3px 0 #d8cff2;
+}
+
+.qv-select:disabled {
+  cursor: default;
+  opacity: 1;
+  color: var(--c-text);
+  box-shadow: none;
+}
+
+.qv-select:focus-visible {
+  outline: 3px solid var(--c-focus-dark);
+  outline-offset: 2px;
+}
+
+.qv-mark {
+  flex: none;
+  width: 28px;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.qv-fix {
+  grid-column: 1 / -1;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.qv-fix b {
+  font-family: var(--font-mono);
+  color: #0c5428;
+}
+
+.qv-match-row.is-ok {
+  border-color: #a4e2bd;
+  background: #e4f8ec;
+}
+
+.qv-match-row.is-bad {
+  border-color: #ffb8c1;
+  background: #ffeaed;
+}
+
+.qv-match-row.is-ok .qv-mark {
+  color: var(--c-green);
+}
+
+.qv-match-row.is-bad .qv-mark {
+  color: var(--c-red);
+}
+
+/* --------------------------------------------------------------- code -- */
+
+.qv-examples {
+  margin: 0 0 14px;
+  padding: 10px 14px 12px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-card-2);
+}
+
+.qv-ex-title {
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-muted);
+}
+
+.qv-ex-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qv-ex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  font-size: 0.95rem;
+}
+
+.qv-ex-label {
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  background: #efe8ff;
+  color: #5b21b6;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.qv-ex-input {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--c-muted);
+}
+
+.qv-ex-arrow {
+  font-weight: 900;
+  color: var(--c-muted);
+}
+
+.qv-ex-expected {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.qv-ex-foot {
+  margin-top: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--c-muted);
+}
+
+/* the editor: <pre> highlight and <textarea> share one grid cell, one scroller */
+
+.qv-editor {
+  --qv-lh: 24px;
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--code-bg);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.35);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: var(--qv-lh);
+}
+
+.qv-editor:focus-within {
+  outline: 3px solid var(--c-focus-dark);
+  outline-offset: 2px;
+}
+
+.qv-scroll {
+  position: relative;
+  max-height: min(27rem, 62vh);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #5a4f8f transparent;
+  overscroll-behavior: contain;
+}
+
+.qv-sizer {
+  display: flex;
+  min-width: 100%;
+  width: max-content;
+  min-height: calc(var(--qv-lh) * 6 + 24px);
+}
+
+.qv-gutter,
+.qv-hl,
+.qv-ta,
+.qv-probe {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: var(--qv-lh);
+  letter-spacing: 0;
+  word-spacing: 0;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  font-kerning: none;
+  font-synthesis: none;
+  text-rendering: auto;
+  text-transform: none;
+  text-align: left;
+}
+
+.qv-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  padding: 12px 10px 12px 12px;
+  background: var(--code-gutter);
+  color: #6f6a91;
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.qv-stack {
+  display: grid;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+
+.qv-hl,
+.qv-ta {
+  grid-area: 1 / 1;
+  min-width: 0;
+  padding: 12px 18px 12px 12px;
+  border: 0;
+  border-radius: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-wrap: normal;
+  word-break: normal;
+}
+
+.qv-hl {
+  pointer-events: none;
+  color: var(--code-text);
+}
+
+/* same advance width for every token: no bold / italic in the editor, colour only */
+.qv-hl [class^="tok-"] {
+  font-weight: 400;
+  font-style: normal;
+}
+
+.qv-hl code {
+  font: inherit;
+}
+
+.qv-ta {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #fff;
+  outline: 0;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.qv-ta::placeholder {
+  color: #7d77a3;
+  -webkit-text-fill-color: #7d77a3;
+}
+
+.qv-ta::selection {
+  background: rgba(150, 100, 255, 0.5);
+  -webkit-text-fill-color: transparent;
+}
+
+.qv-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.qv-editor.is-locked {
+  filter: saturate(0.75);
+}
+
+.qv-editor.is-locked:focus-within {
+  outline: 0;
+}
+
+.qv-editor.is-locked .qv-ta {
+  caret-color: transparent;
+}
+
+.qv-count {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #cfc8f5;
+  font: 700 0.75rem/1.6 var(--font-body);
+  pointer-events: none;
+}
+
+.qv-count.is-full {
+  background: var(--c-red);
+  color: #fff;
+}
+
+/* touch symbol bar: fixed to the visual viewport, so it rides on top of the keyboard */
+
+.qv-symbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  background: #1d1934;
+  border-top: 2px solid #3a3366;
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.35);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.qv-symbar::-webkit-scrollbar {
+  display: none;
+}
+
+.qv-symkey {
+  flex: none;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #3a3366;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  font-weight: 700;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.35);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.qv-symkey.is-wide {
+  min-width: 56px;
+  background: #5a3fb0;
+  font-size: 1rem;
+}
+
+.qv-symkey:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.qv-symkey:focus-visible {
+  outline: 3px solid var(--c-yellow);
+  outline-offset: 1px;
+}
+
+html.qv-bar-open body {
+  padding-bottom: 64px;
+}
+
+/* run / grading results */
+
+.qv-run {
+  margin-top: 14px;
+}
+
+.qv-run[hidden] {
+  display: none;
+}
+
+.qv-spin {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.45em;
+  border-width: 3px;
+}
+
+.qv-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.qv-msg-icon {
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+
+.qv-msg-text {
+  min-width: 0;
+  font-family: var(--font-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.qv-msg-ok {
+  background: #e4f8ec;
+  border-color: #a4e2bd;
+  color: #0c5428;
+}
+
+.qv-msg-bad {
+  background: #ffeaed;
+  border-color: #ffb8c1;
+  color: #8a1426;
+}
+
+.qv-msg-warn {
+  background: #fff5d6;
+  border-color: #ffd97a;
+  color: #6b4500;
+}
+
+.qv-cases-title {
+  margin: 14px 0 6px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-muted);
+}
+
+.qv-msg + .qv-cases {
+  margin-top: 10px;
+}
+
+.qv-cases {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qv-case {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 12px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-card-2);
+}
+
+.qv-case.is-ok {
+  border-color: #a4e2bd;
+  background: #f0fbf4;
+}
+
+.qv-case.is-bad {
+  border-color: #ffb8c1;
+  background: #fff3f4;
+}
+
+.qv-case-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.qv-case.is-ok .qv-case-mark {
+  background: var(--c-green);
+}
+
+.qv-case.is-bad .qv-case-mark {
+  background: var(--c-red);
+}
+
+.qv-case-body {
+  min-width: 0;
+}
+
+.qv-case-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.qv-case-label code {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.qv-case-got {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--c-muted);
+  overflow-wrap: anywhere;
+}
+
+.qv-tag {
+  padding: 0.1em 0.6em;
+  border-radius: 999px;
+  background: #e5defa;
+  color: #4a2597;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.qv-io {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 6px 0 0;
+  font-size: 0.9rem;
+}
+
+.qv-io dt {
+  font-weight: 800;
+  color: var(--c-muted);
+}
+
+.qv-io dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.qv-io pre {
+  max-height: 9rem;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.qv-io pre.is-error {
+  color: #a51a2c;
+}
+
+.qv-solution {
+  margin-top: 14px;
+}
+
+.qv-solution .code-block,
+.qv-key .code-block {
+  margin-bottom: 0;
+  /* show it the way the player types it: "<=" stays two characters */
+  font-variant-ligatures: none;
+}
+
+.qv-score-line {
+  flex: 1 1 100%;
+  font-weight: 800;
+}
+
+/* fingers need bigger blanks: taller lines, so the inputs are tappable (>= 36px) */
+@media (pointer: coarse) {
+  .code-block.qv-blanks-code {
+    line-height: 40px;
+  }
+
+  .qv-blank {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+  }
+
+  .qv-input {
+    height: 36px;
+    line-height: 32px;
+  }
+}
+
+/* ------------------------------------------------------------- phones -- */
+
+@media (max-width: 560px) {
+  /* short items sit beside their dropdown; long ones get the full row */
+  .qv-match-row {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 6px 10px;
+    padding: 8px 10px;
+  }
+
+  .qv-match-row.is-long {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qv-select {
+    min-height: 44px;
+    padding-left: 10px;
+  }
+
+  .qv-meta-left {
+    gap: 6px;
+  }
+
+  .qv-actions .btn {
+    flex: 1 1 140px;
+  }
+
+  .qv-scroll {
+    max-height: min(22rem, 52vh);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qv-symkey:active {
+    transform: none;
+  }
+}
